@@ -68,7 +68,12 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
         createdAt: p.created_at || p.createdAt || new Date().toISOString(),
         salesCount: p.sales_count || p.salesCount || 0,
         rating: p.rating || 0,
-        variants: p.variants || []
+        variants: p.variants || [],
+        // Affiliate fields
+        is_affiliate_eligible: p.is_affiliate_eligible !== undefined ? p.is_affiliate_eligible : true,
+        affiliate_commission_rate: p.affiliate_commission_rate || 0,
+        affiliate_payout_type: p.affiliate_payout_type || 'percentage',
+        affiliate_fixed_amount: p.affiliate_fixed_amount || 0
     });
 
     const lastFetchRef = useRef<number>(0);

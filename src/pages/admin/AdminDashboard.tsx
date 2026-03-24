@@ -25,7 +25,7 @@ const AdminDashboard = () => {
     const { partners, addPartner, updatePartner, deletePartner } = usePartners();
 
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean | null>(null);
-    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'alliance-apps'>('dashboard');
+    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'alliance-apps' | 'affiliates' | 'affiliate-partners'>('dashboard');
 
     // Admin Session Guard
     useEffect(() => {
@@ -88,9 +88,65 @@ const AdminDashboard = () => {
         }
     };
 
+    // Affiliate Applications state
+    const [affiliateApplications, setAffiliateApplications] = useState<any[]>([]);
+
+    const fetchAffiliateApplications = async () => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            const response = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/applications`, {
+                headers: { 'X-Admin-Secret': adminSecret }
+            });
+            if (response.data.success) {
+                setAffiliateApplications(response.data.applications);
+            }
+        } catch (error) {
+            console.error('Failed to fetch affiliate applications:', error);
+            toast.error('Failed to load affiliate applications');
+        }
+    };
+
+    const handleUpdateAffiliateStatus = async (id: string, status: string) => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            await axios.put(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/applications/${id}`, 
+                { status },
+                { headers: { 'X-Admin-Secret': adminSecret } }
+            );
+            toast.success(`Application marked as ${status}`);
+            fetchAffiliateApplications();
+            if (status === 'Approved') fetchAffiliates(); // Refresh partners if approved
+        } catch (error) {
+            toast.error('Failed to update status');
+        }
+    };
+
+    // Active Affiliates state
+    const [activeAffiliates, setActiveAffiliates] = useState<any[]>([]);
+
+    const fetchAffiliates = async () => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            const response = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/affiliates`, {
+                headers: { 'X-Admin-Secret': adminSecret }
+            });
+            if (response.data.success) {
+                setActiveAffiliates(response.data.affiliates);
+            }
+        } catch (error) {
+            console.error('Failed to fetch active affiliates:', error);
+        }
+    };
+
     useEffect(() => {
         if (view === 'alliance-apps') {
             fetchAllianceApps();
+        }
+        if (view === 'affiliates') {
+            fetchAffiliateApplications();
+        }
+        if (view === 'affiliate-partners') {
+            fetchAffiliates();
         }
     }, [view]);
 
@@ -414,7 +470,12 @@ const AdminDashboard = () => {
             { id: 'image', label: 'Reference Image', placeholder: 'Upload reference image (optional)', type: 'file' as const, required: false, isDefault: true }
         ],
         customFormConfig: [] as { id: string; label: string; type: 'text' | 'textarea' | 'number'; placeholder?: string; required?: boolean }[],
-        variants: [] as { weight: string; price: number; images: string[] }[]
+        variants: [] as { weight: string; price: number; images: string[] }[],
+        // Affiliate fields
+        is_affiliate_eligible: true,
+        affiliate_commission_rate: '10',
+        affiliate_payout_type: 'percentage' as 'percentage' | 'fixed',
+        affiliate_fixed_amount: '0'
     });
 
     const [mainImage, setMainImage] = useState<string>('');
@@ -530,7 +591,12 @@ const AdminDashboard = () => {
                 { id: 'image', label: 'Reference Image', placeholder: 'Upload reference image (optional)', type: 'file' as const, required: false, isDefault: true }
             ],
             customFormConfig: product.customFormConfig || [],
-            variants: product.variants || []
+            variants: product.variants || [],
+            // Affiliate fields mapping
+            is_affiliate_eligible: product.is_affiliate_eligible !== undefined ? product.is_affiliate_eligible : true,
+            affiliate_commission_rate: (product.affiliate_commission_rate || '10').toString(),
+            affiliate_payout_type: product.affiliate_payout_type || 'percentage',
+            affiliate_fixed_amount: (product.affiliate_fixed_amount || '0').toString()
         });
         setMainImage(product.image);
         setOtherImages(product.images || []);
@@ -595,7 +661,11 @@ const AdminDashboard = () => {
                 { id: 'image', label: 'Reference Image', placeholder: 'Upload reference image (optional)', type: 'file' as const, required: false, isDefault: true }
             ],
             customFormConfig: [],
-            variants: []
+            variants: [],
+            is_affiliate_eligible: true,
+            affiliate_commission_rate: '10',
+            affiliate_payout_type: 'percentage',
+            affiliate_fixed_amount: '0'
         });
         setMainImage('');
         setMainImageFile(null);
@@ -672,7 +742,12 @@ const AdminDashboard = () => {
                 isCustomRequest: formData.isCustomRequest,
                 defaultFormFields: formData.defaultFormFields,
                 customFormConfig: formData.customFormConfig,
-                variants: formData.variants
+                variants: formData.variants,
+                // Affiliate fields
+                is_affiliate_eligible: formData.is_affiliate_eligible,
+                affiliate_commission_rate: parseFloat(formData.affiliate_commission_rate) || 0,
+                affiliate_payout_type: formData.affiliate_payout_type,
+                affiliate_fixed_amount: parseInt(formData.affiliate_fixed_amount) || 0
             };
 
             if (editingId) {
@@ -1009,6 +1084,37 @@ const AdminDashboard = () => {
                         </div>
                     </div>
 
+                    {/* Affiliate Network */}
+                    <div className="space-y-4">
+                        <p className="px-4 text-[10px] font-black text-[#8E2A8B] uppercase tracking-[0.2em]">Affiliate Network</p>
+                        <div className="space-y-2">
+                            <button
+                                onClick={() => { setView('affiliates'); resetForm(); }}
+                                className={`w-full text-left px-5 py-3 rounded-2xl transition-all duration-300 font-bold flex items-center justify-between group ${view === 'affiliates' ? 'sidebar-item-active' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-xl transition-colors ${view === 'affiliates' ? 'bg-[#8E2A8B]/20' : 'bg-gray-800 group-hover:bg-gray-700'}`}>
+                                        <UserCheck size={18} className={view === 'affiliates' ? 'text-[#8E2A8B]' : ''}/>
+                                    </div>
+                                    <span className="text-sm">Affiliate Applications</span>
+                                </div>
+                                {view === 'affiliates' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
+                            </button>
+                            <button
+                                onClick={() => { setView('affiliate-partners'); resetForm(); }}
+                                className={`w-full text-left px-5 py-3 rounded-2xl transition-all duration-300 font-bold flex items-center justify-between group ${view === 'affiliate-partners' ? 'sidebar-item-active' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-xl transition-colors ${view === 'affiliate-partners' ? 'bg-[#8E2A8B]/20' : 'bg-gray-800 group-hover:bg-gray-700'}`}>
+                                        <Users size={18} className={view === 'affiliate-partners' ? 'text-[#8E2A8B]' : ''}/>
+                                    </div>
+                                    <span className="text-sm">Affiliates</span>
+                                </div>
+                                {view === 'affiliate-partners' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Content Section */}
                     <div className="space-y-4">
                         <p className="px-4 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Brand Experience</p>
@@ -1018,7 +1124,7 @@ const AdminDashboard = () => {
                                 { view: 'news', icon: Newspaper, label: 'Newsroom' },
                                 { view: 'videos', icon: Video, label: 'Media Hub' },
                                 { view: 'partners', icon: Handshake, label: 'Alliances' },
-                                { view: 'alliance-apps', icon: UserCheck, label: 'Applications' }
+                                { view: 'alliance-apps', icon: Search, label: 'Alliance Catalog' }
                             ].map((item, idx) => (
                                 <button
                                     key={idx}
@@ -1063,7 +1169,7 @@ const AdminDashboard = () => {
                 <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-100 px-10 py-5 flex justify-between items-center shadow-sm">
                     <div className="flex items-center gap-8 flex-1">
                         <h2 className="text-2xl font-black text-[#2D1B4E] whitespace-nowrap admin-gradient-text">
-                            {view === 'dashboard' ? 'Overview' : view === 'videos' ? 'Video Lab' : view === 'news' ? 'Press Hub' : view === 'reviews' ? 'Feedback Lab' : view === 'stocks' ? 'Inventory' : view === 'orders' ? 'Order Stream' : view === 'users' ? 'Monitoring' : view === 'partners' ? 'Alliances' : view === 'alliance-apps' ? 'Alliance Catalog' : view === 'add' ? (editingId ? 'Refine Product' : 'Construct Product') : (selectedCategory === 'all' ? 'Inventory Catalog' : categories.find(c => c.slug === selectedCategory)?.name || selectedCategory)}
+                            {view === 'dashboard' ? 'Overview' : view === 'videos' ? 'Video Lab' : view === 'news' ? 'Press Hub' : view === 'reviews' ? 'Feedback Lab' : view === 'stocks' ? 'Inventory' : view === 'orders' ? 'Order Stream' : view === 'users' ? 'Monitoring' : view === 'partners' ? 'Alliances' : view === 'affiliates' ? 'Affiliate Program' : view === 'alliance-apps' ? 'Alliance Catalog' : view === 'add' ? (editingId ? 'Refine Product' : 'Construct Product') : (selectedCategory === 'all' ? 'Inventory Catalog' : categories.find(c => c.slug === selectedCategory)?.name || selectedCategory)}
                         </h2>
 
                         {/* Search Bar */}
@@ -1873,6 +1979,210 @@ const AdminDashboard = () => {
                                 </div>
                             </div>
                         </div>
+                    ) : view === 'affiliates' ? (
+                        <div className="space-y-6">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                <div>
+                                    <h3 className="text-2xl font-black text-[#2D1B4E] admin-gradient-text">Affiliate Program</h3>
+                                    <p className="text-gray-500 text-sm font-medium mt-1">Review and manage your brand ambassadors</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <div className="bg-white px-4 py-2 rounded-2xl border border-emerald-100 shadow-sm flex items-center gap-3">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                        <div>
+                                            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Approved</div>
+                                            <div className="text-lg font-black text-emerald-600 leading-tight">
+                                                {affiliateApplications.filter(a => a.status === 'Approved').length}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white px-4 py-2 rounded-2xl border border-amber-100 shadow-sm flex items-center gap-3">
+                                        <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+                                        <div>
+                                            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Pending</div>
+                                            <div className="text-lg font-black text-amber-600 leading-tight">
+                                                {affiliateApplications.filter(a => a.status === 'pending' || a.status === 'Pending').length}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {affiliateApplications.map((app) => (
+                                    <div key={app.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-500 group overflow-hidden flex flex-col">
+                                        {/* Card Header */}
+                                        <div className="p-6 pb-4 flex justify-between items-start border-b border-gray-50 bg-gray-50/30">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#2D1B4E] to-[#8E2A8B] flex items-center justify-center text-white font-black text-xl shadow-lg transform group-hover:rotate-6 transition-transform">
+                                                    {app.name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-black text-[#2D1B4E] leading-tight text-lg line-clamp-1">{app.name}</h4>
+                                                    <div className="text-xs font-bold text-[#8E2A8B] flex items-center gap-1 mt-1">
+                                                        <Clock size={12} />
+                                                        {new Date(app.created_at).toLocaleDateString()}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                                                app.status === 'Approved' ? 'bg-emerald-500 text-white' : 
+                                                app.status === 'Rejected' ? 'bg-rose-500 text-white' : 
+                                                'bg-amber-100 text-amber-700'
+                                            }`}>
+                                                {app.status}
+                                            </span>
+                                        </div>
+
+                                        {/* Card Content */}
+                                        <div className="p-6 space-y-5 flex-1">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <p className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Contact</p>
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-gray-700">
+                                                        <Phone size={14} className="text-[#8E2A8B]" />
+                                                        {app.phone}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1 text-right">
+                                                    <p className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Location</p>
+                                                    <p className="text-xs font-bold text-gray-700">{app.city || 'N/A'}</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="space-y-1">
+                                                <p className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Email Address</p>
+                                                <p className="text-xs font-bold text-gray-600 truncate">{app.email}</p>
+                                            </div>
+
+                                            <div className="space-y-1 bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                                                <p className="text-[10px] uppercase font-black text-[#8E2A8B] tracking-widest mb-2 flex items-center gap-2">
+                                                    <Activity size={12} /> Experience: {app.selling_experience || 'None'}
+                                                </p>
+                                                <p className="text-xs font-medium text-gray-600 line-clamp-3 italic leading-relaxed">
+                                                    "{app.reason || 'No reason provided.'}"
+                                                </p>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2 pt-2">
+                                                {app.instagram_link && (
+                                                    <a href={app.instagram_link} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#f09433] via-[#e6683c] to-[#bc1888] text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md">
+                                                        <Instagram size={18} />
+                                                    </a>
+                                                )}
+                                                {app.facebook_link && (
+                                                    <a href={app.facebook_link} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-[#1877F2] text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md">
+                                                        <Facebook size={18} />
+                                                    </a>
+                                                )}
+                                                {app.youtube_link && (
+                                                    <a href={app.youtube_link} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-[#FF0000] text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md">
+                                                        <Youtube size={18} />
+                                                    </a>
+                                                )}
+                                                {app.twitter_link && (
+                                                    <a href={app.twitter_link} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-[#1DA1F2] text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md">
+                                                        <Twitter size={18} />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Card Footer Actions */}
+                                        <div className="p-4 bg-gray-50/50 border-t border-gray-100 flex gap-3">
+                                            {(app.status === 'pending' || app.status === 'Pending') ? (
+                                                <>
+                                                    <button 
+                                                        onClick={() => handleUpdateAffiliateStatus(app.id, 'Approved')}
+                                                        className="flex-1 bg-emerald-500 text-white font-black text-xs py-3 rounded-2xl hover:bg-emerald-600 transition-all shadow-[0_5px_15px_rgba(16,185,129,0.3)] shadow-emerald-500/30 flex items-center justify-center gap-2"
+                                                    >
+                                                        <UserCheck size={16} />
+                                                        APPROVE
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleUpdateAffiliateStatus(app.id, 'Rejected')}
+                                                        className="flex-none bg-rose-50 text-rose-500 p-3 rounded-2xl hover:bg-rose-500 hover:text-white transition-all border border-rose-100"
+                                                        title="Reject"
+                                                    >
+                                                        <X size={20} />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => handleUpdateAffiliateStatus(app.id, 'Pending')}
+                                                    className="w-full py-3 rounded-2xl bg-gray-100 text-gray-500 text-xs font-black hover:bg-gray-200 transition-all border border-gray-200 flex items-center justify-center gap-2"
+                                                >
+                                                    <Clock size={16} />
+                                                    RESET TO PENDING
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                                {affiliateApplications.length === 0 && (
+                                    <div className="col-span-full py-20 bg-white rounded-3xl border border-dashed border-gray-200 flex flex-col items-center justify-center gap-4">
+                                        <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300">
+                                            <TrendingUp size={40} />
+                                        </div>
+                                        <p className="text-gray-400 font-black uppercase tracking-widest text-sm">No applications to display</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : view === 'affiliate-partners' ? (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold text-[#2D1B4E]">Active Affiliate Partners</h3>
+                                <div className="text-sm text-gray-500 font-bold uppercase tracking-widest">{activeAffiliates.length} Partners Linked</div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-gray-50 border-b border-gray-100">
+                                        <tr>
+                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Ambassador</th>
+                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Referral Code</th>
+                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400 text-right">Performance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50">
+                                        {activeAffiliates.map((affiliate) => (
+                                            <tr key={affiliate.id} className="hover:bg-gray-50/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-xl bg-purple-100 text-[#8E2A8B] flex items-center justify-center font-bold">
+                                                            {affiliate.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-gray-900">{affiliate.name}</div>
+                                                            <div className="text-xs text-gray-500">{affiliate.email}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <code className="bg-gray-100 px-3 py-1.5 rounded-lg text-sm font-black text-[#8E2A8B] tracking-wider uppercase border border-gray-200">
+                                                        {affiliate.referral_code}
+                                                    </code>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        <div className="text-sm font-black text-gray-900">₹{parseFloat(affiliate.total_commission).toLocaleString()} Earning</div>
+                                                        <div className="text-[10px] font-bold text-gray-400 uppercase">From ₹{parseFloat(affiliate.total_sales).toLocaleString()} Sales</div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {activeAffiliates.length === 0 && (
+                                            <tr>
+                                                <td colSpan={3} className="px-6 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-sm italic">
+                                                    No approved affiliates yet.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     ) : view === 'alliance-apps' ? (
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -2076,6 +2386,94 @@ const AdminDashboard = () => {
                                                 Live Status (Published to Site)
                                             </label>
                                         </div>
+                                    </div>
+
+                                    {/* Affiliate Marketing Settings */}
+                                    <div className="col-span-1 md:col-span-2 bg-purple-50/50 p-6 rounded-2xl border border-purple-100 space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
+                                                    <Handshake size={20} />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-black text-[#2D1B4E]">Affiliate Marketing Settings</h4>
+                                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Configure commissions for brand ambassadors</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl shadow-sm border border-purple-100">
+                                                <input
+                                                    type="checkbox"
+                                                    id="is_affiliate_eligible"
+                                                    checked={formData.is_affiliate_eligible}
+                                                    onChange={e => setFormData({ ...formData, is_affiliate_eligible: e.target.checked })}
+                                                    className="w-5 h-5 rounded text-[#8E2A8B] focus:ring-[#8E2A8B] border-gray-300"
+                                                />
+                                                <label htmlFor="is_affiliate_eligible" className="text-sm font-black text-purple-700 select-none cursor-pointer">
+                                                    Eligible for Affiliate Program
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {formData.is_affiliate_eligible && (
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                <div className="space-y-2">
+                                                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Payout Type</label>
+                                                    <select
+                                                        value={formData.affiliate_payout_type}
+                                                        onChange={e => setFormData({ ...formData, affiliate_payout_type: e.target.value as any })}
+                                                        className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-[#8E2A8B] focus:border-[#8E2A8B] outline-none transition-all bg-white font-bold text-sm"
+                                                    >
+                                                        <option value="percentage">Percentage (%)</option>
+                                                        <option value="fixed">Fixed Amount (₹)</option>
+                                                    </select>
+                                                </div>
+
+                                                {formData.affiliate_payout_type === 'percentage' ? (
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Commission Rate (%)</label>
+                                                        <div className="relative">
+                                                            <input
+                                                                type="number"
+                                                                value={formData.affiliate_commission_rate}
+                                                                onChange={e => setFormData({ ...formData, affiliate_commission_rate: e.target.value })}
+                                                                className="w-full border border-gray-300 rounded-xl px-4 py-3 pr-10 focus:ring-[#8E2A8B] focus:border-[#8E2A8B] outline-none transition-all font-bold"
+                                                                placeholder="10"
+                                                            />
+                                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">%</div>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Fixed Amount (₹)</label>
+                                                        <div className="relative">
+                                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">₹</div>
+                                                            <input
+                                                                type="number"
+                                                                value={formData.affiliate_fixed_amount}
+                                                                onChange={e => setFormData({ ...formData, affiliate_fixed_amount: e.target.value })}
+                                                                className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 focus:ring-[#8E2A8B] focus:border-[#8E2A8B] outline-none transition-all font-bold"
+                                                                placeholder="100"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="bg-white p-4 rounded-2xl border border-purple-100 flex items-center gap-4 group">
+                                                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                                                        <DollarSign size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Estimated Payout</div>
+                                                        <div className="text-lg font-black text-[#2D1B4E] leading-tight">
+                                                            ₹{formData.affiliate_payout_type === 'percentage' 
+                                                                ? ((parseFloat(formData.price || '0') * parseFloat(formData.affiliate_commission_rate || '0')) / 100).toFixed(2)
+                                                                : parseFloat(formData.affiliate_fixed_amount || '0').toFixed(2)
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Custom Form Builder - Table View */}
@@ -3029,11 +3427,10 @@ const AdminDashboard = () => {
                                 </tbody>
                             </table>
                         </div>
-                    )
-                    }
-                </div >
-            </main >
-        </div >
+                    )}
+                </div>
+            </main>
+        </div>
     );
 };
 

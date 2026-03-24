@@ -82,8 +82,10 @@ app.use(cors({
             'http://localhost:5173',
             'http://localhost:5180',
             'http://localhost:5174',
+            'http://localhost:5175',
             'http://localhost:3000',
-            'http://127.0.0.1:3000'
+            'http://127.0.0.1:3000',
+            'http://127.0.0.1:5175'
         ];
         // Allow Vercel previews and localhost
         if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
@@ -319,8 +321,17 @@ const runMigrations = async () => {
                 bank_name VARCHAR(255),
                 account_number VARCHAR(255),
                 ifsc_code VARCHAR(100),
+                instagram_link TEXT,
+                facebook_link TEXT,
+                twitter_link TEXT,
+                youtube_link TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+            
+            ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS instagram_link TEXT;
+            ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS facebook_link TEXT;
+            ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS twitter_link TEXT;
+            ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS youtube_link TEXT;
 
             CREATE TABLE IF NOT EXISTS affiliate_links (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -743,7 +754,8 @@ app.post('/api/products', authenticateAdmin, async (req, res) => {
         const {
             name, price, category, image, slug, categorySlug,
             shortDescription, description, keyFeatures, features, images, isBestSeller,
-            isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants
+            isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants,
+            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount
         } = req.body;
 
         // Robust price parsing (removes commas if present)
@@ -772,7 +784,11 @@ app.post('/api/products', authenticateAdmin, async (req, res) => {
                 is_custom_request: isCustomRequest || false,
                 custom_form_config: customFormConfig,
                 default_form_fields: defaultFormFields,
-                variants: variants
+                variants: variants,
+                is_affiliate_eligible: is_affiliate_eligible !== undefined ? is_affiliate_eligible : true,
+                affiliate_commission_rate: affiliate_commission_rate || 0,
+                affiliate_payout_type: affiliate_payout_type || 'percentage',
+                affiliate_fixed_amount: affiliate_fixed_amount || 0
             }])
             .select()
             .single();
@@ -797,7 +813,8 @@ app.put('/api/products/:id', authenticateAdmin, async (req, res) => {
         const {
             name, price, category, image, slug, categorySlug,
             shortDescription, description, keyFeatures, features, images, isBestSeller,
-            isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants
+            isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants,
+            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount
         } = req.body;
 
         const cleanPrice = typeof price === 'string' ? parseFloat(price.replace(/,/g, '')) : Number(price);
@@ -822,7 +839,11 @@ app.put('/api/products/:id', authenticateAdmin, async (req, res) => {
                 is_custom_request: isCustomRequest || false,
                 custom_form_config: customFormConfig,
                 default_form_fields: defaultFormFields,
-                variants: variants
+                variants: variants,
+                is_affiliate_eligible: is_affiliate_eligible !== undefined ? is_affiliate_eligible : true,
+                affiliate_commission_rate: affiliate_commission_rate || 0,
+                affiliate_payout_type: affiliate_payout_type || 'percentage',
+                affiliate_fixed_amount: affiliate_fixed_amount || 0
             })
             .eq('id', id)
             .select()
@@ -1911,6 +1932,9 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // --- End Auth Routes ---
+
+const affiliateRouter = require('./routes/affiliates')(authenticateToken, authenticateAdmin);
+app.use('/api/affiliates', affiliateRouter);
 
 
 // Razorpay Integration

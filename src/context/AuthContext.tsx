@@ -11,6 +11,7 @@ interface User {
     email: string;
     fullName: string;
     mobile?: string;
+    role?: string;
 }
 
 interface AuthContextType {
@@ -48,7 +49,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     username: u.email || u.id, // Use email as unique identifier for cart/wishlist keys
                     email: u.email || '',
                     fullName: u.user_metadata?.full_name || u.user_metadata?.username || '',
-                    mobile: u.user_metadata?.mobile || ''
+                    mobile: u.user_metadata?.mobile || '',
+                    role: u.user_metadata?.role || 'user'
                 });
             }
             setIsLoading(false);
@@ -64,7 +66,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     username: u.email || u.id, // Use email as unique identifier for cart/wishlist keys
                     email: u.email || '',
                     fullName: u.user_metadata?.full_name || u.user_metadata?.username || '',
-                    mobile: u.user_metadata?.mobile || ''
+                    mobile: u.user_metadata?.mobile || '',
+                    role: u.user_metadata?.role || 'user'
                 });
                 analytics.setUserId(u.id);
             } else {

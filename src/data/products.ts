@@ -55,6 +55,11 @@ export interface Product {
     createdAt?: string;
     salesCount?: number;
     rating?: number;
+    // Affiliate Marketing
+    is_affiliate_eligible?: boolean;
+    affiliate_commission_rate?: number;
+    affiliate_payout_type?: 'percentage' | 'fixed';
+    affiliate_fixed_amount?: number;
 }
 
 // Sample product to visualize changes immediately

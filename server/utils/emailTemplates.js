@@ -261,11 +261,55 @@ const getOrderUserTemplate = (order) => {
     return getBaseLayout(content);
 };
 
+const getAffiliateWelcomeTemplate = (data) => {
+    const content = `
+        <h1 style="color: #2D1B4E;">Welcome to the Kottravai Family!</h1>
+        <p>Dear ${data.name},</p>
+        <p>Congratulations! We are thrilled to inform you that your application for the <strong>Kottravai Affiliate Program</strong> has been <strong>Approved</strong>.</p>
+        
+        <p>You are now a part of our mission to empower rural women artisans. As a Kottravai Ambassador, you can start earning commissions by sharing our authentic handmade products with your community.</p>
+        
+        <div style="background-color: #fdf4fc; padding: 25px; border-radius: 12px; border: 1px solid #f8d7f3; margin: 30px 0;">
+            <h3 style="margin-top: 0; color: #8E2A8B;">Your Account Credentials</h3>
+            <div style="margin-bottom: 15px;">
+                <span style="font-weight: bold; color: #555;">Dashboard URL:</span><br>
+                <a href="https://kottravai.in/affiliate/login" style="color: #8E2A8B;">kottravai.in/affiliate/login</a>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <span style="font-weight: bold; color: #555;">Email:</span><br>
+                <span style="color: #333;">${data.email}</span>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <span style="font-weight: bold; color: #555;">Temporary Password:</span><br>
+                <span style="background-color: #fff; padding: 4px 8px; border: 1px dashed #8E2A8B; font-family: monospace; font-weight: bold; color: #2D1B4E;">${data.password}</span>
+            </div>
+            <div style="margin-bottom: 0;">
+                <span style="font-weight: bold; color: #555;">Your Referral Code:</span><br>
+                <span style="font-size: 18px; font-weight: 2000; color: #8E2A8B;">${data.referral_code}</span>
+            </div>
+        </div>
+
+        <h3 style="color: #2D1B4E;">Next Steps:</h3>
+        <ol style="color: #555; line-height: 1.8;">
+            <li>Login to your dashboard using the credentials above.</li>
+            <li>Change your temporary password in the Account Settings.</li>
+            <li>Complete your profile and add your <strong>UPI ID / Bank Details</strong> for payouts.</li>
+            <li>Generate your unique affiliate links and start sharing!</li>
+        </ol>
+
+        <p>If you have any questions, please reach out to our affiliate support team at <a href="mailto:affiliates@kottravai.in" style="color: #8E2A8B;">affiliates@kottravai.in</a>.</p>
+        
+        <p>Warm Regards,<br><strong>Team Kottravai</strong></p>
+    `;
+    return getBaseLayout(content);
+};
+
 module.exports = {
     getB2BAdminTemplate,
     getB2BUserTemplate,
     getContactAdminTemplate,
     getContactUserTemplate,
     getOrderAdminTemplate,
-    getOrderUserTemplate
+    getOrderUserTemplate,
+    getAffiliateWelcomeTemplate
 };

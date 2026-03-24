@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../db');
 const supabase = require('../supabase');
+const crypto = require('crypto');
+const { sendEmail } = require('../utils/mailer');
+const { getAffiliateWelcomeTemplate } = require('../utils/emailTemplates');
 
 module.exports = (authenticateToken, authenticateAdmin) => {
     const router = express.Router();
@@ -174,13 +177,104 @@ module.exports = (authenticateToken, authenticateAdmin) => {
     router.put('/admin/applications/:id', authenticateAdmin, async (req, res) => {
         try {
             const { id } = req.params;
-            const { status } = req.body;
+            const { status } = req.body; // 'Approved', 'Rejected', 'Pending'
+            
+            // 1. Get the current application data
+            const appRes = await db.query('SELECT * FROM affiliate_applications WHERE id = $1', [id]);
+            if (appRes.rows.length === 0) return res.status(404).json({ error: 'Application not found' });
+            const application = appRes.rows[0];
+
+            // 2. If status is being changed to 'Approved', handle onboarding
+            if (status === 'Approved' && application.status !== 'Approved') {
+                const tempPassword = crypto.randomBytes(6).toString('hex'); // 12-char password
+                const referralCode = `${application.name.split(' ')[0].toUpperCase().replace(/[^A-Z0-9]/g, '')}${Math.floor(1000 + Math.random() * 9000)}`;
+
+                let userId;
+                
+                try {
+                    console.log(`🚀 Starting onboarding for ${application.email}`);
+                    
+                    // Create User in Supabase Auth
+                    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+                        email: application.email,
+                        password: tempPassword,
+                        email_confirm: true,
+                        user_metadata: { name: application.name, role: 'affiliate' }
+                    });
+
+                    if (authError) {
+                        console.log(`⚠️ Auth creation error/warning: ${authError.message}`);
+                        // If user already exists, we try to find them
+                        if (authError.message.includes('already registered') || authError.status === 422) {
+                            const { data: existingUsers, error: listError } = await supabase.auth.admin.listUsers();
+                            if (listError) throw listError;
+                            
+                            const user = existingUsers.users.find(u => u.email.toLowerCase() === application.email.toLowerCase());
+                            if (user) {
+                                userId = user.id;
+                                console.log(`✅ Using existing user ID: ${userId}`);
+                            } else {
+                                throw new Error(`User claimed to exist but not found in list for ${application.email}`);
+                            }
+                        } else {
+                            throw authError;
+                        }
+                        userId = authData.user.id;
+                        console.log(`✅ Created new user ID: ${userId}`);
+                    }
+
+                    // Ensure user metadata has role: 'affiliate' even for existing users
+                    await supabase.auth.admin.updateUserById(userId, {
+                        user_metadata: { role: 'affiliate' }
+                    });
+                    console.log(`✅ Updated metadata for user ${userId}`);
+
+                    // Create Affiliate Profile
+                    console.log(`📝 Inserting affiliate profile for ${userId}`);
+                    await db.query(`
+                        INSERT INTO affiliates (user_id, name, email, phone, city, referral_code, status, instagram_link, facebook_link, twitter_link, youtube_link)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                        ON CONFLICT (user_id) DO UPDATE SET status = EXCLUDED.status
+                    `, [
+                        userId, application.name, application.email, application.phone, application.city, 
+                        referralCode, 'Approved', 
+                        application.instagram_link, application.facebook_link, application.twitter_link, application.youtube_link
+                    ]);
+                    console.log(`✅ Profile created for ${application.email}`);
+
+                    // Send Welcome Email
+                    console.log(`📧 Sending welcome email to ${application.email}`);
+                    await sendEmail({
+                        to: application.email,
+                        subject: 'Welcome to Kottravai Affiliate Program!',
+                        html: getAffiliateWelcomeTemplate({
+                            name: application.name,
+                            email: application.email,
+                            password: tempPassword,
+                            referral_code: referralCode
+                        })
+                    });
+                    console.log(`✅ Welcome email sent to ${application.email}`);
+
+                } catch (onboardError) {
+                    console.error('Affiliate onboarding error:', onboardError);
+                    try {
+                        const fs = require('fs');
+                        const logData = `[${new Date().toISOString()}] Error for ${application.email}:\n${onboardError.message}\n${onboardError.stack}\n---\n`;
+                        fs.appendFileSync('d:/Kottravai-main/Kottravai-main/tmp/affiliate_errors.log', logData);
+                    } catch (fsErr) {}
+                    return res.status(500).json({ error: 'Failed to complete affiliate onboarding', details: onboardError.message });
+                }
+            }
+
+            // 3. Update the application record
             const result = await db.query(
                 `UPDATE affiliate_applications SET status=$1, reviewed_at=NOW() WHERE id=$2 RETURNING *`, 
                 [status, id]
             );
             res.json({ success: true, application: result.rows[0] });
         } catch (err) {
+            console.error('Update application error:', err);
             res.status(500).json({ error: 'Failed to update application' });
         }
     });
@@ -277,6 +371,74 @@ module.exports = (authenticateToken, authenticateAdmin) => {
             res.json({ success: true, message: 'Affiliate deleted' });
         } catch (err) {
             res.status(500).json({ error: 'Failed to delete affiliate' });
+        }
+    });
+
+    // --- Affiliate Profile Management (Self-Service) ---
+
+    /**
+     * @route GET /api/affiliates/profile
+     * @desc Get current logged-in affiliate's profile data
+     */
+    router.get('/profile', authenticateToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const result = await db.query('SELECT * FROM affiliates WHERE user_id = $1', [userId]);
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: 'Affiliate profile not found' });
+            }
+
+            res.json(result.rows[0]);
+        } catch (err) {
+            console.error('Fetch affiliate profile error:', err);
+            res.status(500).json({ error: 'Failed to fetch profile' });
+        }
+    });
+
+    /**
+     * @route PUT /api/affiliates/profile
+     * @desc Update current affiliate's profile details
+     */
+    router.put('/profile', authenticateToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const {
+                name, phone, city,
+                instagram_link, facebook_link, twitter_link, youtube_link,
+                upi_id, bank_name, account_number, ifsc_code
+            } = req.body;
+
+            const result = await db.query(`
+                UPDATE affiliates 
+                SET name = COALESCE($1, name), 
+                    phone = COALESCE($2, phone), 
+                    city = COALESCE($3, city), 
+                    instagram_link = COALESCE($4, instagram_link), 
+                    facebook_link = COALESCE($5, facebook_link), 
+                    twitter_link = COALESCE($6, twitter_link), 
+                    youtube_link = COALESCE($7, youtube_link),
+                    upi_id = COALESCE($8, upi_id),
+                    bank_name = COALESCE($9, bank_name),
+                    account_number = COALESCE($10, account_number),
+                    ifsc_code = COALESCE($11, ifsc_code)
+                WHERE user_id = $12
+                RETURNING *
+            `, [
+                name, phone, city,
+                instagram_link, facebook_link, twitter_link, youtube_link,
+                upi_id, bank_name, account_number, ifsc_code,
+                userId
+            ]);
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: 'Affiliate profile not found' });
+            }
+
+            res.json({ success: true, profile: result.rows[0], message: 'Profile updated successfully' });
+        } catch (err) {
+            console.error('Update affiliate profile error:', err);
+            res.status(500).json({ error: 'Failed to update profile' });
         }
     });
 
