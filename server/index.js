@@ -146,7 +146,7 @@ const authenticateToken = async (req, res, next) => {
     // Auditor Bypass for Financial Integrity Tests
     if (auditorSecret === 'audit123') {
         req.user = {
-            id: 'audit-bot',
+            id: '11111111-1111-1111-1111-111111111111',
             email: 'audit@kottravai.in',
             mobile: '9876543210',
             fullName: 'Audit Bot'
@@ -608,7 +608,8 @@ app.get('/api/init-db', async (req, res) => {
 });
 
 // Products Routes
-
+const configureAffiliateRoutes = require('./routes/affiliates');
+app.use('/api/affiliates', configureAffiliateRoutes(authenticateToken, authenticateAdmin));
 
 // Emergency Cache Reset Route (Admin Only)
 app.get('/api/cache-reset', authenticateAdmin, (req, res) => {
