@@ -213,7 +213,11 @@ const runMigrations = async () => {
             ['short_description', 'TEXT'],
             ['key_features', 'TEXT[]'],
             ['features', 'TEXT[]'],
-            ['images', 'TEXT[]']
+            ['images', 'TEXT[]'],
+            ['is_affiliate_eligible', 'BOOLEAN DEFAULT TRUE'],
+            ['affiliate_commission_rate', 'NUMERIC(5,2)'],
+            ['affiliate_payout_type', "VARCHAR(50) DEFAULT 'percentage'"],
+            ['affiliate_fixed_amount', 'NUMERIC(10,2)']
         ];
 
         for (const [col, type] of productCols) {
@@ -276,6 +280,77 @@ const runMigrations = async () => {
                 twitter_id VARCHAR(255),
                 youtube_id VARCHAR(255),
                 status VARCHAR(50) DEFAULT 'Pending',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS affiliate_applications (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                phone VARCHAR(20),
+                city VARCHAR(100),
+                instagram_link TEXT,
+                facebook_link TEXT,
+                twitter_link TEXT,
+                youtube_id VARCHAR(255),
+                youtube_link TEXT,
+                selling_experience TEXT,
+                products_promoted TEXT,
+                reason TEXT,
+                status VARCHAR(50) DEFAULT 'pending',
+                reviewed_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS affiliates (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id UUID UNIQUE,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                phone VARCHAR(20),
+                city VARCHAR(100),
+                status VARCHAR(50) DEFAULT 'pending',
+                level VARCHAR(50) DEFAULT 'Ambassador',
+                referral_code VARCHAR(100) UNIQUE,
+                total_sales NUMERIC DEFAULT 0,
+                total_commission NUMERIC DEFAULT 0,
+                available_balance NUMERIC DEFAULT 0,
+                upi_id VARCHAR(255),
+                bank_name VARCHAR(255),
+                account_number VARCHAR(255),
+                ifsc_code VARCHAR(100),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS affiliate_links (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                affiliate_id UUID REFERENCES affiliates(id) ON DELETE CASCADE,
+                product_id UUID REFERENCES products(id),
+                slug VARCHAR(100) UNIQUE NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                total_clicks INTEGER DEFAULT 0,
+                total_conversions INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS affiliate_clicks (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                link_id UUID REFERENCES affiliate_links(id) ON DELETE CASCADE,
+                ip_address VARCHAR(100),
+                user_agent TEXT,
+                referrer TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS affiliate_sales (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                affiliate_id UUID REFERENCES affiliates(id) ON DELETE CASCADE,
+                order_id UUID REFERENCES orders(id),
+                link_id UUID REFERENCES affiliate_links(id),
+                sale_amount NUMERIC NOT NULL,
+                commission_rate NUMERIC(5,2) NOT NULL,
+                commission_amount NUMERIC NOT NULL,
+                status VARCHAR(50) DEFAULT 'pending',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `).catch(() => { });
