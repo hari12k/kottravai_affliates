@@ -1,0 +1,53 @@
+@layer components {
+    .glass-card {
+        @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+    }
+
+    .admin-gradient-text {
+        @apply bg-clip-text text-transparent bg-gradient-to-r from-[#8E2A8B] to-[#2D1B4E];
+    }
+
+    .sidebar-item-active {
+        @apply bg-gradient-to-r from-[#8E2A8B] to-[#722270] text-white shadow-lg shadow-[#8E2A8B]/20;
+    }
+
+    .stat-card-glow {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stat-card-glow::after {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(142, 42, 139, 0.05) 0%, transparent 70%);
+        pointer-events: none;
+    }
+}
+
+.bento-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+}
+
+@keyframes float {
+    0% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-5px);
+    }
+
+    100% {
+        transform: translateY(0px);
+    }
+}
+
+.animate-float {
+    animation: float 3s ease-in-out infinite;
+}

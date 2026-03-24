@@ -1,0 +1,20 @@
+[
+    {
+        "id": 1,
+        "slug": "home",
+        "title": "Kottravai - Handicrafts Excellence",
+        "content": "<div class='space-y-0'><section class='relative h-[600px] flex items-center justify-center bg-gray-900 text-white overflow-hidden'><div class='absolute inset-0 bg-[url(/uploads/2025/01/hero-bg.jpg)] bg-cover bg-center opacity-50'></div><div class='relative z-10 text-center max-w-4xl px-4'><h1 class='text-5xl md:text-7xl font-bold mb-6 tracking-tight'>Handcrafted<br/>Elegance</h1><p class='text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto'>Discover our exclusive collection of traditional terracotta jewellery, natural essentials, and handmade gifts.</p><a href='/shop' class='inline-block bg-primary text-white px-10 py-4 rounded-full font-semibold hover:bg-white hover:text-black transition duration-300'>Explore Collection</a></div></section><section class='py-20 bg-white'><div class='container'><div class='text-center mb-16'><span class='text-primary font-bold tracking-wider text-sm uppercase'>Featured Collection</span><h2 class='text-3xl md:text-4xl font-bold mt-2 text-gray-900'>Shop By Category</h2></div><div class='grid md:grid-cols-3 gap-8'><div class='group relative overflow-hidden rounded-xl'><img src='/uploads/2025/01/cat-1.jpg' class='w-full h-80 object-cover transition duration-500 group-hover:scale-110' alt='Handicrafts'><div class='absolute inset-0 bg-black/30 group-hover:bg-black/40 transition'></div><div class='absolute bottom-6 left-6 text-white'><h3 class='text-2xl font-bold'>Handicrafts</h3><a href='/category/handicrafts' class='underline mt-2 inline-block'>View Products</a></div></div><div class='group relative overflow-hidden rounded-xl'><img src='/uploads/2025/01/cat-2.jpg' class='w-full h-80 object-cover transition duration-500 group-hover:scale-110' alt='Heritage Mixes'><div class='absolute inset-0 bg-black/30 group-hover:bg-black/40 transition'></div><div class='absolute bottom-6 left-6 text-white'><h3 class='text-2xl font-bold'>Heritage Mixes</h3><a href='/category/heritage-mixes' class='underline mt-2 inline-block'>View Products</a></div></div><div class='group relative overflow-hidden rounded-xl'><img src='/uploads/2025/01/cat-3.jpg' class='w-full h-80 object-cover transition duration-500 group-hover:scale-110' alt='Essential Care'><div class='absolute inset-0 bg-black/30 group-hover:bg-black/40 transition'></div><div class='absolute bottom-6 left-6 text-white'><h3 class='text-2xl font-bold'>Essential Care</h3><a href='/category/essential-care' class='underline mt-2 inline-block'>View Products</a></div></div></div></div></section><section class='py-20 bg-gray-50'><div class='container grid md:grid-cols-2 gap-12 items-center'><div><img src='/uploads/2025/01/story.jpg' alt='Our Story' class='rounded-xl shadow-lg'></div><div><span class='text-primary font-bold tracking-wider text-sm uppercase'>Our Story</span><h2 class='text-3xl md:text-4xl font-bold mt-2 mb-6 text-gray-900'>Tradition Meets Modernity</h2><p class='text-gray-600 mb-6 leading-relaxed'>At Kottravai, we believe in preserving the essence of traditional craftsmanship while embracing modern aesthetics. Our products are not just items; they are stories woven with love, care, and heritage.</p><a href='/about' class='text-primary font-bold hover:underline'>Read More About Us &rarr;</a></div></div></section></div>",
+        "featured_image": "",
+        "meta_title": "Kottravai - Handcrafted Excellence & Natural Essentials",
+        "meta_description": "Shop exclusive handcrafted terracotta jewellery, natural essentials, and traditional mixes at Kottravai."
+    },
+    {
+        "id": 2,
+        "slug": "about",
+        "title": "About Us",
+        "content": "<div class='max-w-4xl mx-auto py-12'><h1 class='text-4xl font-bold mb-8'>About Kottravai</h1><p class='text-lg leading-relaxed mb-6'>Kottravai is a Vazhai Incubator initiative dedicated to promoting traditional arts and sustainable living.</p></div>",
+        "featured_image": "",
+        "meta_title": "About Us - Kottravai",
+        "meta_description": "Learn more about our mission and vision."
+    }
+]

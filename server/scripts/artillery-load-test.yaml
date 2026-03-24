@@ -1,0 +1,53 @@
+config:
+  target: "http://localhost:5000"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 50
+      name: "Warm-up and Ramp-up"
+    - duration: 120
+      arrivalRate: 50
+      name: "Sustained Peak Load"
+    - duration: 30
+      arrivalRate: 100
+      name: "Stress Burst"
+  processor: "./load-test-processor.js"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Concurrent Shipping Calculation & Checkout"
+    flow:
+      - post:
+          url: "/api/shipping/calculate"
+          beforeRequest: "generateCartData"
+          json:
+            state: "{{ state }}"
+            cartTotal: "{{ cartTotal }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "shippingCharge"
+      
+      - think: 1 # Simulate user browsing/deciding
+
+      - post:
+          url: "/api/orders"
+          beforeRequest: "prepareOrderData"
+          headers:
+            Authorization: "Bearer {{ testToken }}"
+          json:
+            customerName: "Load Test User"
+            customerEmail: "test@example.com"
+            customerPhone: "9876543210"
+            address: "123 Test Street"
+            city: "Test City"
+            state: "{{ state }}"
+            pincode: "600001"
+            total: "{{ totalWithShipping }}"
+            subtotal: "{{ cartTotal }}"
+            items: "{{ items }}"
+            paymentId: "pay_test_123"
+            orderId: "order_test_123"
+          expect:
+            - statusCode: 200 # Note: In actual stress test, we check for 400s if mismatched

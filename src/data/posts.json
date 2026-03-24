@@ -1,0 +1,32 @@
+[
+    {
+        "id": 101,
+        "slug": "welcome-to-kottravai",
+        "title": "Welcome to Kottravai",
+        "excerpt": "We are excited to launch our new platform. Read more about our journey.",
+        "content": "<p>This is the first post on our new blog. Stay tuned for more updates!</p>",
+        "date": "2025-01-20",
+        "author": "Admin",
+        "featured_image": "/uploads/2025/01/blog-1.jpg"
+    },
+    {
+        "id": 102,
+        "slug": "tech-trends-2026",
+        "title": "Top Tech Trends in 2026",
+        "excerpt": "Discover what's shaping the future of technology this year.",
+        "content": "<p>From AI agents to sustainable tech, here is what you need to know...</p>",
+        "date": "2026-01-15",
+        "author": "Editor",
+        "featured_image": "/uploads/2026/01/trends.jpg"
+    },
+    {
+        "id": 103,
+        "slug": "growing-your-business",
+        "title": "Tips for Growing Your Business",
+        "excerpt": "Practical advice for scaling your operations effectively.",
+        "content": "<p>Growth requires strategy. Here are 5 key tips...</p>",
+        "date": "2026-01-25",
+        "author": "Admin",
+        "featured_image": ""
+    }
+]

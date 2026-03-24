@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Kottravai offers premium handcrafted terracotta jewellery, heritage mixes, coconut crafts and essential care products. Shop our exclusive handmade collection today." />
+  <meta http-equiv="Permissions-Policy"
+    content="accelerometer=*, gyroscope=*, magnetometer=*, payment=*, geolocation=*, camera=*, microphone=*">
+
+  <title>Kottravai | Handmade Crafts, Eco Products &amp; Traditional Food Mixes.</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
+  <link rel="shortcut icon" href="/favicon.png" />
+
+  <!-- ✅ CRITICAL: Preload LCP hero image — browser fetches this before anything else -->
+  <link rel="preload" as="image" href="/hero.webp" fetchpriority="high" />
+
+  <!-- ✅ Fonts: preconnect + subset weights only (400+600+700+800 instead of all 9) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&family=Montserrat:wght@400;600;700;800&family=Outfit:wght@400;600;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Google Analytics (async — never blocks render) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LHMHGXGY6K"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LHMHGXGY6K');
+  </script>
+
+  <!-- ✅ Razorpay: deferred — never blocks first paint (was render-blocking before) -->
+  <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

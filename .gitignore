@@ -1,0 +1,17 @@
+node_modules
+.env
+.env.local
+.env.*.local
+dist
+.vercel
+*.log
+.DS_Store
+*.tsbuildinfo
+
+# Temporary Reports & Backups
+*.backup
+*-REPORT.md
+*-SUMMARY.txt
+*-report.json
+*-report.txt
+*.zip
