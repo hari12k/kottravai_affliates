@@ -81,7 +81,9 @@ app.use(cors({
             'https://www.kottravai.in',
             'http://localhost:5173',
             'http://localhost:5180',
-            'http://localhost:5174'
+            'http://localhost:5174',
+            'http://localhost:3000',
+            'http://127.0.0.1:3000'
         ];
         // Allow Vercel previews and localhost
         if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
