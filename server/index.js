@@ -249,12 +249,32 @@ const runMigrations = async () => {
             ['zone_name', 'VARCHAR(100)'],
             ['address', 'TEXT'],
             ['city', 'VARCHAR(100)'],
-            ['pincode', 'VARCHAR(20)']
+            ['pincode', 'VARCHAR(20)'],
+            ['affiliate_id', 'UUID'],
+            ['referral_code', 'VARCHAR(100)']
         ];
 
         for (const [col, type] of orderCols) {
             await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS ${col} ${type}`).catch(() => { });
         }
+
+        // Product Affiliate Columns
+        const productAffCols = [
+            ['is_affiliate_eligible', 'BOOLEAN DEFAULT TRUE'],
+            ['affiliate_commission_rate', 'NUMERIC(5,2) DEFAULT NULL'],
+            ['affiliate_payout_type', 'VARCHAR(50) DEFAULT \'percentage\''],
+            ['affiliate_fixed_amount', 'INTEGER DEFAULT NULL'],
+            ['min_affiliate_level', 'VARCHAR(100) DEFAULT \'Ambassador\'']
+        ];
+        for (const [col, type] of productAffCols) {
+            await db.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ${col} ${type}`).catch(() => { });
+        }
+
+        // Data Normalization: Level names
+        await db.query(`
+            UPDATE affiliates SET level = 'Ambassador' WHERE level = 'Kottravai Ambassador';
+            UPDATE products SET min_affiliate_level = 'Ambassador' WHERE min_affiliate_level = 'Kottravai Ambassador' OR min_affiliate_level IS NULL;
+        `).catch(() => { });
 
         // Create missing tables
         await db.query(`
@@ -1084,23 +1104,117 @@ const finalizeOrder = async (orderData, paymentId) => {
         const calc = await recalculateTotals(orderData.items, orderData.state);
 
         // 3. Save to Database
+        const referralCode = orderData.referral_code || orderData.referralCode;
         const insertRes = await db.query(`
             INSERT INTO orders (
                 customer_name, customer_email, customer_phone, address, city, district, state,
                 pincode, total, items, payment_id, order_id, status, 
-                subtotal_server, shipping_server, total_server, zone_name
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                subtotal_server, shipping_server, total_server, zone_name, referral_code
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             RETURNING *
         `, [
             orderData.customerName, orderData.customerEmail, orderData.customerPhone, orderData.address,
             orderData.city, orderData.district, orderData.state, orderData.pincode,
             calc.totalCents / 100, JSON.stringify(orderData.items), paymentId, orderId, 'Processing',
-            calc.subtotalCents, calc.shippingCents, calc.totalCents, calc.zoneName
+            calc.subtotalCents, calc.shippingCents, calc.totalCents, calc.zoneName, referralCode
         ]);
 
         const row = insertRes.rows[0];
 
         console.log(`✅ [ORDER_CREATED] Order ID: ${orderId} | ID in DB: ${row.id}`);
+
+        // 4. Affiliate Tracking Logic (Process Sales & Commissions)
+        if (referralCode) {
+            try {
+                let affiliate = null;
+                let linkId = null;
+
+                // Priority 1: Check if it's an Affiliate Link Slug
+                const linkRes = await db.query(`
+                    SELECT a.*, l.id as link_primary_id 
+                    FROM affiliate_links l 
+                    JOIN affiliates a ON l.affiliate_id = a.id 
+                    WHERE l.slug = $1 AND l.is_active = true AND a.status = $2
+                `, [referralCode, 'Approved']);
+                
+                if (linkRes.rows.length > 0) {
+                    affiliate = linkRes.rows[0];
+                    linkId = linkRes.rows[0].link_primary_id;
+                    console.log(`🔗 [LINK_ATTRIBUTION] Matched Link Slug: ${referralCode}`);
+                } else {
+                    // Priority 2: Check if it's a direct Referral Code
+                    const affRes = await db.query('SELECT * FROM affiliates WHERE referral_code = $1 AND status = $2', [referralCode, 'Approved']);
+                    if (affRes.rows.length > 0) {
+                        affiliate = affRes.rows[0];
+                        console.log(`👤 [DIRECT_ATTRIBUTION] Matched Referral Code: ${referralCode}`);
+                    }
+                }
+
+                if (affiliate) {
+                    let totalCommissionAmount = 0;
+                    let totalEligiblePrice = 0;
+                    
+                    // Fetch product details for precise commission calculation
+                    const itemIds = orderData.items.map(i => i.id).filter(id => id);
+                    if (itemIds.length > 0) {
+                        const prodRes = await db.query('SELECT id, is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount FROM products WHERE id = ANY($1)', [itemIds]);
+                        const dbProds = prodRes.rows;
+                        
+                        for (const item of orderData.items) {
+                            const product = dbProds.find(p => p.id.toString() === item.id.toString());
+                            if (product && product.is_affiliate_eligible) {
+                                const rate = parseFloat(product.affiliate_commission_rate) || 0;
+                                const fixed = parseFloat(product.affiliate_fixed_amount) || 0;
+                                const type = product.affiliate_payout_type || 'percentage';
+                                const price = parseFloat(item.price) || 0;
+                                const qty = parseInt(item.quantity) || 1;
+                                
+                                totalEligiblePrice += price * qty;
+
+                                if (type === 'percentage') {
+                                    totalCommissionAmount += (price * rate / 100) * qty;
+                                } else {
+                                    totalCommissionAmount += fixed * qty;
+                                }
+                            }
+                        }
+                    }
+
+                    if (totalCommissionAmount > 0) {
+                        // Calculate an effective average commission rate for the record
+                        const averageRate = totalEligiblePrice > 0 ? (totalCommissionAmount / totalEligiblePrice) * 100 : 0;
+
+                        // Insert into affiliate_sales accurately
+                        const saleRes = await db.query(`
+                            INSERT INTO affiliate_sales (affiliate_id, order_id, link_id, sale_amount, commission_rate, commission_amount, status)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                            RETURNING id
+                        `, [affiliate.id, row.id, linkId, calc.totalCents / 100, averageRate.toFixed(2), totalCommissionAmount, 'approved']); // Set to approved as payment is confirmed
+
+                        // Update Affiliate Cumulative Balances
+                        await db.query(`
+                            UPDATE affiliates 
+                            SET total_sales = total_sales + $1,
+                                total_commission = total_commission + $2,
+                                available_balance = available_balance + $2
+                            WHERE id = $3
+                        `, [calc.totalCents / 100, totalCommissionAmount, affiliate.id]);
+
+                        // Link Order to Affiliate ID
+                        await db.query('UPDATE orders SET affiliate_id = $1, referral_code = $2 WHERE id = $3', [affiliate.id, referralCode, row.id]);
+
+                        // Update Conversion count if a specific link was used
+                        if (linkId) {
+                            await db.query('UPDATE affiliate_links SET total_conversions = total_conversions + 1 WHERE id = $1', [linkId]);
+                        }
+                        
+                        console.log(`🎯 [AFFILIATE_SUCCESS] Linked order ${row.id} to affiliate ${affiliate.name} | Amount: ₹${totalCommissionAmount}`);
+                    }
+                }
+            } catch (affError) {
+                console.error('⚠️ [AFFILIATE_TRACKING_ERROR]', affError.message);
+            }
+        }
 
         // Send emails and trigger Shiprocket
         await triggerAsyncTasks(orderId, orderData, paymentId);
@@ -1950,8 +2064,8 @@ const razorpay = new Razorpay({
 
 app.post('/api/razorpay/order', async (req, res) => {
     try {
-        const { amount, currency, orderData } = req.body;
-        console.log(`💳 Creating Razorpay order: Amount=${amount}, Currency=${currency || 'INR'}`);
+        const { amount, currency, orderData, referral_code } = req.body;
+        console.log(`💳 Creating Razorpay order: Amount=${amount}, Currency=${currency || 'INR'} | Ref=${referral_code || 'NONE'}`);
 
         if (!amount || isNaN(amount) || amount <= 0) {
             return res.status(400).json({ error: "Invalid amount. Must be a positive number." });
@@ -1967,9 +2081,11 @@ app.post('/api/razorpay/order', async (req, res) => {
 
         // --- PERSIST PENDING ORDER FOR WEBHOOK ---
         if (orderData) {
+            // Include referral code in the persisted data
+            const finalOrderData = { ...orderData, referral_code };
             await db.query(
                 'INSERT INTO pending_orders (razorpay_order_id, order_data) VALUES ($1, $2) ON CONFLICT (razorpay_order_id) DO UPDATE SET order_data = $2',
-                [activeOrder.id, JSON.stringify(orderData)]
+                [activeOrder.id, JSON.stringify(finalOrderData)]
             ).catch(pError => console.error('⚠️ [PENDING_ORDER_SAVE_FAILED]', pError.message));
 
             console.log(`📋 PENDING_ORDER_SAVED: ${activeOrder.id}`);
@@ -2049,7 +2165,7 @@ app.post('/api/razorpay/webhook', async (req, res) => {
 
 app.post('/api/razorpay/verify', async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderData } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderData, referral_code } = req.body;
         console.log("Verifying payment for Order ID:", razorpay_order_id);
 
         const sign = razorpay_order_id + "|" + razorpay_payment_id;
@@ -2066,7 +2182,8 @@ app.post('/api/razorpay/verify', async (req, res) => {
             if (orderData) {
                 await finalizeOrder({
                     ...orderData,
-                    orderId: razorpay_order_id // Ensure orderId is passed correctly
+                    orderId: razorpay_order_id, // Ensure orderId is passed correctly
+                    referral_code: referral_code || (orderData && orderData.referral_code)
                 }, razorpay_payment_id).catch(e => console.error('ℹ️ [VERIFY_FLOW_FINALIZATION_REDUNDANT]', e.message));
             }
 

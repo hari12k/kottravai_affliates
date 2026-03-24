@@ -64,13 +64,27 @@ function App() {
     const location = useLocation();
     const [scrolledMilestones, setScrolledMilestones] = useState<number[]>([]);
 
-    // Track Page Views
+    // Track Page Views & Affiliate Referral
     useEffect(() => {
+        // Core Analytics tracking
         analytics.trackEvent('page_view', {
             path: location.pathname,
             search: location.search,
             title: document.title
         });
+
+        // 🟢 Affiliate Tracking: Capture 'ref' parameter and persist in localStorage
+        const params = new URLSearchParams(location.search);
+        const refCode = params.get('ref');
+        
+        if (refCode) {
+            console.log('🎯 Affiliate Ref Captured:', refCode);
+            // Store in localStorage for cross-page persistence
+            localStorage.setItem('kottravai_affiliate_ref', refCode);
+            // Also store a timestamp for potential expiry logic
+            localStorage.setItem('kottravai_affiliate_ref_time', Date.now().toString());
+        }
+
         setScrolledMilestones([]); // Reset milestones on navigation
     }, [location]);
 

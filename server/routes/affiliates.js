@@ -113,12 +113,31 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         }
     });
 
-    // 6. Get Affiliated Products List (Public or Auth)
-    router.get('/products', async (req, res) => {
+    // 6. Get Affiliated Products List (Now Filtered by Level)
+    router.get('/products', authenticateToken, async (req, res) => {
         try {
-            const result = await db.query(`SELECT id, name, slug, image, price, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount FROM products WHERE is_affiliate_eligible = true AND is_live = true`);
+            const userId = req.user.id;
+            const affRes = await db.query('SELECT level FROM affiliates WHERE user_id = $1', [userId]);
+            if (affRes.rows.length === 0) return res.status(404).json({ error: 'Affiliate profile not found' });
+            
+            const affLevel = affRes.rows[0].level || 'Ambassador';
+            
+            // Define level hierarchy
+            let allowedLevels = ['Ambassador'];
+            if (affLevel === 'Kottravai Seller') allowedLevels = ['Ambassador', 'Kottravai Seller'];
+            if (affLevel === 'Kottravai Pro Partner') allowedLevels = ['Ambassador', 'Kottravai Seller', 'Kottravai Pro Partner'];
+
+            const result = await db.query(
+                `SELECT id, name, slug, image, price, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount, min_affiliate_level 
+                 FROM products 
+                 WHERE is_affiliate_eligible = true 
+                 AND is_live = true 
+                 AND min_affiliate_level = ANY($1)`,
+                [allowedLevels]
+            );
             res.json({ success: true, products: result.rows });
         } catch (err) {
+            console.error('Fetch affiliate products error:', err);
             res.status(500).json({ error: 'Failed to fetch eligible products' });
         }
     });

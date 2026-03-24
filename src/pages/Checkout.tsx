@@ -181,6 +181,7 @@ const Checkout = () => {
                 body: JSON.stringify({
                     amount: totalAmount,
                     currency: "INR",
+                    referral_code: localStorage.getItem('kottravai_affiliate_ref'),
                     orderData: {
                         customerName: formData.fullName,
                         customerEmail: formData.email,
@@ -252,6 +253,7 @@ const Checkout = () => {
                                 razorpay_order_id: response.razorpay_order_id,
                                 razorpay_payment_id: response.razorpay_payment_id,
                                 razorpay_signature: response.razorpay_signature,
+                                referral_code: localStorage.getItem('kottravai_affiliate_ref'),
                                 orderData: orderData
                             })
                         });
@@ -263,6 +265,8 @@ const Checkout = () => {
                             
                             // 3. Clear cart and redirect
                             clearCart();
+                            localStorage.removeItem('kottravai_affiliate_ref');
+                            localStorage.removeItem('kottravai_affiliate_ref_time');
                             navigate('/order-success');
                         } else {
                             console.error("❌ Payment verification failed on server", verifyResult);

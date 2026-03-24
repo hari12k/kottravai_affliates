@@ -138,6 +138,20 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleUpdateAffiliateLevel = async (affiliateId: string, newLevel: string) => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            await axios.put(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/affiliates/${affiliateId}`, 
+                { level: newLevel },
+                { headers: { 'X-Admin-Secret': adminSecret } }
+            );
+            toast.success(`Level updated to ${newLevel}`);
+            fetchAffiliates();
+        } catch (error) {
+            toast.error('Failed to update level');
+        }
+    };
+
     useEffect(() => {
         if (view === 'alliance-apps') {
             fetchAllianceApps();
@@ -475,7 +489,8 @@ const AdminDashboard = () => {
         is_affiliate_eligible: true,
         affiliate_commission_rate: '10',
         affiliate_payout_type: 'percentage' as 'percentage' | 'fixed',
-        affiliate_fixed_amount: '0'
+        affiliate_fixed_amount: '0',
+        min_affiliate_level: 'Ambassador'
     });
 
     const [mainImage, setMainImage] = useState<string>('');
@@ -596,7 +611,8 @@ const AdminDashboard = () => {
             is_affiliate_eligible: product.is_affiliate_eligible !== undefined ? product.is_affiliate_eligible : true,
             affiliate_commission_rate: (product.affiliate_commission_rate || '10').toString(),
             affiliate_payout_type: product.affiliate_payout_type || 'percentage',
-            affiliate_fixed_amount: (product.affiliate_fixed_amount || '0').toString()
+            affiliate_fixed_amount: (product.affiliate_fixed_amount || '0').toString(),
+            min_affiliate_level: product.min_affiliate_level || 'Ambassador'
         });
         setMainImage(product.image);
         setOtherImages(product.images || []);
@@ -665,7 +681,8 @@ const AdminDashboard = () => {
             is_affiliate_eligible: true,
             affiliate_commission_rate: '10',
             affiliate_payout_type: 'percentage',
-            affiliate_fixed_amount: '0'
+            affiliate_fixed_amount: '0',
+            min_affiliate_level: 'Ambassador'
         });
         setMainImage('');
         setMainImageFile(null);
@@ -747,7 +764,8 @@ const AdminDashboard = () => {
                 is_affiliate_eligible: formData.is_affiliate_eligible,
                 affiliate_commission_rate: parseFloat(formData.affiliate_commission_rate) || 0,
                 affiliate_payout_type: formData.affiliate_payout_type,
-                affiliate_fixed_amount: parseInt(formData.affiliate_fixed_amount) || 0
+                affiliate_fixed_amount: parseInt(formData.affiliate_fixed_amount) || 0,
+                min_affiliate_level: formData.min_affiliate_level
             };
 
             if (editingId) {
@@ -2142,6 +2160,7 @@ const AdminDashboard = () => {
                                         <tr>
                                             <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Ambassador</th>
                                             <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Referral Code</th>
+                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Achievement Level</th>
                                             <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400 text-right">Performance</th>
                                         </tr>
                                     </thead>
@@ -2164,6 +2183,17 @@ const AdminDashboard = () => {
                                                         {affiliate.referral_code}
                                                     </code>
                                                 </td>
+                                                <td className="px-6 py-4">
+                                                    <select 
+                                                        value={affiliate.level || 'Ambassador'}
+                                                        onChange={(e) => handleUpdateAffiliateLevel(affiliate.id, e.target.value)}
+                                                        className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-black text-[#2D1B4E] focus:ring-2 focus:ring-[#8E2A8B]/20 outline-none transition-all shadow-sm cursor-pointer hover:border-[#8E2A8B]"
+                                                    >
+                                                        <option value="Ambassador">Ambassador</option>
+                                                        <option value="Kottravai Seller">Kottravai Seller</option>
+                                                        <option value="Kottravai Pro Partner">Kottravai Pro Partner</option>
+                                                    </select>
+                                                </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex flex-col items-end">
                                                         <div className="text-sm font-black text-gray-900">₹{parseFloat(affiliate.total_commission).toLocaleString()} Earning</div>
@@ -2174,7 +2204,7 @@ const AdminDashboard = () => {
                                         ))}
                                         {activeAffiliates.length === 0 && (
                                             <tr>
-                                                <td colSpan={3} className="px-6 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-sm italic">
+                                                <td colSpan={4} className="px-6 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-sm italic">
                                                     No approved affiliates yet.
                                                 </td>
                                             </tr>
@@ -2469,6 +2499,34 @@ const AdminDashboard = () => {
                                                                 ? ((parseFloat(formData.price || '0') * parseFloat(formData.affiliate_commission_rate || '0')) / 100).toFixed(2)
                                                                 : parseFloat(formData.affiliate_fixed_amount || '0').toFixed(2)
                                                             }
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formData.is_affiliate_eligible && (
+                                            <div className="pt-4 border-t border-purple-100/50">
+                                                <div className="space-y-4">
+                                                    <div className="flex flex-col md:flex-row md:items-center gap-4">
+                                                        <div className="flex-1 space-y-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Minimum Achievement Level Required</label>
+                                                                <div className="flex items-center gap-2 text-purple-400 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
+                                                                    <Activity size={10} />
+                                                                    <span className="text-[9px] font-black uppercase tracking-tighter">Visibility Control</span>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-[10px] text-gray-400 italic font-medium">Only affiliates at this level or higher will see this product in their portal.</p>
+                                                            <select
+                                                                value={formData.min_affiliate_level}
+                                                                onChange={e => setFormData({ ...formData, min_affiliate_level: e.target.value })}
+                                                                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-[#8E2A8B] focus:border-[#8E2A8B] outline-none transition-all bg-white font-bold text-sm shadow-sm hover:border-[#8E2A8B] cursor-pointer"
+                                                            >
+                                                                <option value="Ambassador">Ambassador</option>
+                                                                <option value="Kottravai Seller">Kottravai Seller</option>
+                                                                <option value="Kottravai Pro Partner">Kottravai Pro Partner</option>
+                                                            </select>
                                                         </div>
                                                     </div>
                                                 </div>
