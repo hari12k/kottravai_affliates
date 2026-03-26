@@ -369,6 +369,23 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         }
     });
 
+    // 14.1. External API endpoint for sales table (for other applications)
+    router.get('/external/sales', async (req, res) => {
+        try {
+            const result = await db.query(`
+                SELECT s.*, a.name as affiliate_name, a.email as affiliate_email, o.order_id as order_number 
+                FROM affiliate_sales s
+                JOIN affiliates a ON s.affiliate_id = a.id
+                JOIN orders o ON s.order_id = o.id
+                ORDER BY s.created_at DESC
+            `);
+            res.json({ success: true, sales: result.rows });
+        } catch (err) {
+            console.error('Fetch external sales error:', err);
+            res.status(500).json({ error: 'Failed to fetch sales for external app' });
+        }
+    });
+
     // 15. Update sale status (Admin) - e.g. marking as paid/settled
     router.put('/admin/sales/:id', authenticateAdmin, async (req, res) => {
         try {

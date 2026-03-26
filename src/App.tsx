@@ -83,6 +83,17 @@ function App() {
             localStorage.setItem('kottravai_affiliate_ref', refCode);
             // Also store a timestamp for potential expiry logic
             localStorage.setItem('kottravai_affiliate_ref_time', Date.now().toString());
+
+            // 🟢 GAP FIX: Record the click in the database
+            fetch('/api/affiliates/click', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    slug: refCode, 
+                    referrer: document.referrer, 
+                    userAgent: navigator.userAgent 
+                })
+            }).catch(err => console.error('Failed to log affiliate click:', err));
         }
 
         setScrolledMilestones([]); // Reset milestones on navigation

@@ -537,6 +537,23 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// External Applications: Get overarching sales (orders)
+app.get('/api/sales', async (req, res) => {
+    try {
+        // Expose successful sales directly for the external application
+        const result = await db.query(`
+            SELECT id, customer_name, customer_email, customer_phone, total, status, items, payment_id, created_at 
+            FROM orders 
+            WHERE status != 'Failed' AND status != 'Cancelled'
+            ORDER BY created_at DESC
+        `);
+        res.json({ success: true, count: result.rows.length, sales: result.rows });
+    } catch (err) {
+        console.error('Fetch external app sales error:', err);
+        res.status(500).json({ error: 'Failed to fetch sales for external application' });
+    }
+});
+
 // --- India Post Pincode Lookup API ---
 app.get('/api/location/pincode/:pincode', async (req, res) => {
     const { pincode } = req.params;
@@ -1163,6 +1180,13 @@ const finalizeOrder = async (orderData, paymentId) => {
                         for (const item of orderData.items) {
                             const product = dbProds.find(p => p.id.toString() === item.id.toString());
                             if (product && product.is_affiliate_eligible) {
+                                // 🟢 GAP FIX: Self-Referral Protection
+                                // If customer email matches affiliate email, skip commission
+                                if (orderData.customerEmail?.toLowerCase() === affiliate.email?.toLowerCase()) {
+                                    console.log(`🚫 [SELF_REFERRAL_BLOCKED] Affiliate ${affiliate.name} tried to refer themselves.`);
+                                    continue; 
+                                }
+
                                 const rate = parseFloat(product.affiliate_commission_rate) || 0;
                                 const fixed = parseFloat(product.affiliate_fixed_amount) || 0;
                                 const type = product.affiliate_payout_type || 'percentage';
@@ -1341,6 +1365,34 @@ app.put('/api/orders/:id', authenticateAdmin, async (req, res) => {
         }
 
         const row = result.rows[0];
+
+        // 🟢 GAP FIX: Revoke Affiliate Commission for Cancelled/Refunded orders
+        if (status === 'Cancelled' || status === 'Refunded') {
+            try {
+                // Find if there's an associated affiliate sale
+                const saleRes = await db.query('SELECT * FROM affiliate_sales WHERE order_id = $1 AND status = $2', [id, 'approved']);
+                if (saleRes.rows.length > 0) {
+                    const sale = saleRes.rows[0];
+                    
+                    // 1. Mark sale as voided/refunded
+                    await db.query('UPDATE affiliate_sales SET status = $1 WHERE id = $2', [status.toLowerCase(), sale.id]);
+                    
+                    // 2. Deduct from affiliate balance
+                    await db.query(`
+                        UPDATE affiliates 
+                        SET total_sales = total_sales - $1,
+                            total_commission = total_commission - $2,
+                            available_balance = available_balance - $2
+                        WHERE id = $3
+                    `, [sale.sale_amount, sale.commission_amount, sale.affiliate_id]);
+                    
+                    console.log(`♻️ [AFFILIATE_COMMISSION_REVOKED] Order #${id} was ${status}. Deducted ${sale.commission_amount} from Affiliate #${sale.affiliate_id}`);
+                }
+            } catch (revError) {
+                console.error('⚠️ [REVOCATION_ERROR]:', revError.message);
+            }
+        }
+
         res.json({
             id: row.id,
             customerName: row.customer_name,
