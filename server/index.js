@@ -969,6 +969,9 @@ app.post('/api/shipping/calculate', async (req, res) => {
         }
 
         const result = await shippingService.calculateShipping(state, cartTotal);
+        // 🧪 TEST MODE: Always free shipping
+        result.shippingFee = 0;
+        result.isFreeShipping = true;
         res.json(result);
     } catch (err) {
         console.error('Shipping API Error:', err.message);
@@ -1004,7 +1007,8 @@ const recalculateTotals = async (items, state) => {
     }
 
     const shipping = await shippingService.calculateShipping(state || 'Rest of India', subtotalCents / 100);
-    const shippingCents = Math.round(shipping.shippingFee * 100);
+    // 🧪 TEST MODE: Always free shipping
+    const shippingCents = 0; // Math.round(shipping.shippingFee * 100);
 
     return {
         subtotalCents,
