@@ -149,12 +149,10 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         try {
             const userId = req.user.id;
             const result = await db.query(`
-                SELECT s.*, o.order_id as order_number, p.name as product_name
+                SELECT s.*, o.order_id as order_number, s.product_name as product_name
                 FROM affiliate_sales s
                 JOIN affiliates a ON s.affiliate_id = a.id
                 JOIN orders o ON s.order_id = o.id
-                LEFT JOIN affiliate_links l ON s.link_id = l.id
-                LEFT JOIN products p ON l.product_id = p.id
                 WHERE a.user_id = $1
                 ORDER BY s.created_at DESC`,
                 [userId]
@@ -241,11 +239,9 @@ module.exports = (authenticateToken, authenticateAdmin) => {
 
             // 5. Recent Sales
             const recentSalesRes = await db.query(`
-                SELECT s.*, o.order_id as order_number, p.name as product_name
+                SELECT s.*, o.order_id as order_number, s.product_name as product_name
                 FROM affiliate_sales s
                 JOIN orders o ON s.order_id = o.id
-                LEFT JOIN affiliate_links l ON s.link_id = l.id
-                LEFT JOIN products p ON l.product_id = p.id
                 WHERE s.affiliate_id = $1
                 ORDER BY s.created_at DESC
                 LIMIT 5
@@ -477,13 +473,12 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                     a.name as affiliate_name, 
                     a.email as affiliate_email, 
                     o.order_id as order_number,
-                    p.name as product_name,
+                    s.product_name as product_name,
                     l.slug as link_slug
                 FROM affiliate_sales s
                 JOIN affiliates a ON s.affiliate_id = a.id
                 JOIN orders o ON s.order_id = o.id
                 LEFT JOIN affiliate_links l ON s.link_id = l.id
-                LEFT JOIN products p ON l.product_id = p.id
                 ORDER BY s.created_at DESC
             `);
             res.json({ success: true, sales: result.rows });
@@ -501,13 +496,12 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                     a.name as affiliate_name, 
                     a.email as affiliate_email, 
                     o.order_id as order_number,
-                    p.name as product_name,
+                    s.product_name as product_name,
                     l.slug as link_slug
                 FROM affiliate_sales s
                 JOIN affiliates a ON s.affiliate_id = a.id
                 JOIN orders o ON s.order_id = o.id
                 LEFT JOIN affiliate_links l ON s.link_id = l.id
-                LEFT JOIN products p ON l.product_id = p.id
                 ORDER BY s.created_at DESC
             `);
             res.json({ success: true, sales: result.rows });
