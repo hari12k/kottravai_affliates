@@ -25,7 +25,7 @@ const AdminDashboard = () => {
     const { partners, addPartner, updatePartner, deletePartner } = usePartners();
 
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean | null>(null);
-    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'alliance-apps' | 'affiliates' | 'affiliate-partners' | 'affiliate-dashboard'>('dashboard');
+    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'alliance-apps' | 'affiliates' | 'affiliate-partners' | 'affiliate-dashboard' | 'affiliate-withdrawals'>('dashboard');
 
     // Admin Session Guard
     useEffect(() => {
@@ -170,6 +170,54 @@ const AdminDashboard = () => {
         }
     };
 
+    // Affiliate Withdrawals state
+    const [withdrawals, setWithdrawals] = useState<any[]>([]);
+
+    const fetchWithdrawals = async () => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            const response = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/withdrawals`, {
+                headers: { 'X-Admin-Secret': adminSecret }
+            });
+            
+            console.log('📡 [DEBUG] Withdrawal Logs Fetch:', {
+                status: response.status,
+                count: response.data?.withdrawals?.length || 0,
+                data: response.data
+            });
+
+            if (response.data.success) {
+                setWithdrawals(response.data.withdrawals || []);
+            }
+        } catch (error: any) {
+            console.error('🚨 [DEBUG] Failed to fetch withdrawals:', {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data
+            });
+            toast.error('Failed to load withdrawal data');
+        }
+    };
+
+    const updateWithdrawalStatus = async (id: string, status: string, notes: string = '') => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            const response = await axios.put(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/withdrawals/${id}`, {
+                status,
+                adminNotes: notes
+            }, {
+                headers: { 'X-Admin-Secret': adminSecret }
+            });
+
+            if (response.data.success) {
+                toast.success(`Withdrawal marked as ${status}`);
+                fetchWithdrawals();
+            }
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Failed to update withdrawal');
+        }
+    };
+
     useEffect(() => {
         if (view === 'alliance-apps') {
             fetchAllianceApps();
@@ -182,6 +230,11 @@ const AdminDashboard = () => {
         }
         if (view === 'affiliate-dashboard') {
             fetchAffiliateSales();
+        }
+        if (view === 'affiliate-withdrawals') {
+            console.log('🔄 Fetching withdrawals and dependencies...');
+            fetchWithdrawals();
+            fetchAffiliates(); // Need affiliates list for manual entry
         }
     }, [view]);
 
@@ -1163,6 +1216,18 @@ const AdminDashboard = () => {
                                     <span className="text-sm">Affiliates</span>
                                 </div>
                                 {view === 'affiliate-partners' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
+                            </button>
+                            <button
+                                onClick={() => { setView('affiliate-withdrawals'); resetForm(); }}
+                                className={`w-full text-left px-5 py-3 rounded-2xl transition-all duration-300 font-bold flex items-center justify-between group ${view === 'affiliate-withdrawals' ? 'sidebar-item-active' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-xl transition-colors ${view === 'affiliate-withdrawals' ? 'bg-[#8E2A8B]/20' : 'bg-gray-800 group-hover:bg-gray-700'}`}>
+                                        <DollarSign size={18} className={view === 'affiliate-withdrawals' ? 'text-[#8E2A8B]' : ''}/>
+                                    </div>
+                                    <span className="text-sm">Withdrawal Logs</span>
+                                </div>
+                                {view === 'affiliate-withdrawals' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
                             </button>
                         </div>
                     </div>
@@ -3571,6 +3636,198 @@ const AdminDashboard = () => {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    ) : view === 'affiliate-withdrawals' ? (
+                        <div className="space-y-6 animate-in fade-in duration-500">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Left Side: Record Manual Payout */}
+                                <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                                    <h4 className="text-sm font-black text-[#2D1B4E] uppercase tracking-widest flex items-center gap-2">
+                                        <Plus size={16} className="text-[#8E2A8B]" />
+                                        Manual Payout Entry
+                                    </h4>
+                                    <form 
+                                        onSubmit={async (e) => {
+                                            e.preventDefault();
+                                            const form = e.target as HTMLFormElement;
+                                            const data = new FormData(form);
+                                            const payload = {
+                                                affiliate_id: data.get('affiliate_id'),
+                                                amount: data.get('amount'),
+                                                paymentMethod: data.get('method'),
+                                                paymentDetails: data.get('details'),
+                                                status: 'paid' // Manual entries are usually already paid
+                                            };
+                                            
+                                            try {
+                                                const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+                                                const res = await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/withdrawals/manual`, payload, {
+                                                    headers: { 'X-Admin-Secret': adminSecret }
+                                                });
+                                                if (res.data.success) {
+                                                    toast.success('Manual payout logged successfully');
+                                                    form.reset();
+                                                    fetchWithdrawals();
+                                                }
+                                            } catch (err: any) {
+                                                toast.error(err.response?.data?.error || 'Failed to record payout');
+                                            }
+                                        }}
+                                        className="space-y-3"
+                                    >
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Select Partner</label>
+                                            <select name="affiliate_id" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-[#8E2A8B]/10 transition-all">
+                                                <option value="">-- Choose Affiliate --</option>
+                                                {activeAffiliates.map(a => (
+                                                    <option key={a.id} value={a.id}>{a.name} ({a.email})</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Amount (₹)</label>
+                                            <input name="amount" type="number" step="1" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none" placeholder="0.00" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Method</label>
+                                                <select name="method" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none">
+                                                    <option value="UPI">UPI</option>
+                                                    <option value="Bank Transfer">Bank Transfer</option>
+                                                    <option value="Cash">Cash</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Reference</label>
+                                                <input name="details" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none" placeholder="UTR / UPI ID" />
+                                            </div>
+                                        </div>
+                                        <button className="w-full bg-[#2D1B4E] text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-[#8E2A8B] transition-all shadow-md">
+                                            Log Transaction
+                                        </button>
+                                    </form>
+                                </div>
+
+                                {/* Right Side: Header Info */}
+                                <div className="lg:col-span-2 bg-gradient-to-br from-[#8E2A8B] to-[#2D1B4E] p-8 rounded-2xl shadow-xl flex flex-col justify-center text-white relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-10 opacity-10">
+                                        <DollarSign size={120} />
+                                    </div>
+                                    <h2 className="text-3xl font-black mb-2">Financial Nexus</h2>
+                                    <p className="text-white/70 max-w-md">Real-time monitoring of affiliate payouts. Log manual transactions or approve pending requests from ambassadors.</p>
+                                    <div className="flex gap-4 mt-6">
+                                        <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10">
+                                            <p className="text-[10px] font-bold uppercase text-white/50">Total Logs</p>
+                                            <p className="text-xl font-black">{withdrawals.length}</p>
+                                        </div>
+                                        <button 
+                                            onClick={fetchWithdrawals}
+                                            className="px-4 py-2 bg-white text-[#2D1B4E] rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-100 transition-all flex items-center gap-2"
+                                        >
+                                            <Activity size={16} />
+                                            Sync Data
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                <table className="w-full text-left">
+                                    <thead className="bg-[#f8f9fc] border-b border-gray-100">
+                                        <tr>
+                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Partner</th>
+                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Amount</th>
+                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Strategy/Method</th>
+                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Status</th>
+                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Processed</th>
+                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest text-right">Operations</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {withdrawals.map((w: any) => (
+                                            <tr key={w.id} className="hover:bg-gray-50/50 transition-colors group">
+                                                <td className="px-6 py-5">
+                                                    <div className="font-bold text-gray-800">{w.affiliate_name}</div>
+                                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">{w.affiliate_email}</div>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <span className="text-lg font-black text-[#8E2A8B]">₹{parseFloat(w.amount).toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="px-2 py-1 bg-gray-100 rounded text-[10px] font-black text-gray-600 uppercase tracking-widest">{w.payment_method}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-gray-500 mt-1.5 font-medium max-w-xs truncate" title={w.payment_details}>
+                                                        {w.payment_details}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                                        w.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
+                                                        w.status === 'approved' ? 'bg-blue-100 text-blue-700' :
+                                                        w.status === 'rejected' ? 'bg-rose-100 text-rose-700' :
+                                                        'bg-amber-100 text-amber-700 animate-pulse'
+                                                    }`}>
+                                                        {w.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div className="flex items-center gap-2 text-gray-400">
+                                                        <Clock size={12} />
+                                                        <span className="text-[11px] font-bold">
+                                                            {w.processed_at ? new Date(w.processed_at).toLocaleDateString() : 'Awaiting Flow'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-5 text-right">
+                                                    <div className="flex justify-end items-center gap-2">
+                                                        {w.status === 'pending' && (
+                                                            <>
+                                                                <button 
+                                                                    onClick={() => updateWithdrawalStatus(w.id, 'approved')}
+                                                                    className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all"
+                                                                >
+                                                                    Approve
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        const notes = window.prompt('Specify reason for rejection:');
+                                                                        if (notes !== null) updateWithdrawalStatus(w.id, 'rejected', notes);
+                                                                    }}
+                                                                    className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all"
+                                                                >
+                                                                    Kill Flow
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        {w.status === 'approved' && (
+                                                            <button 
+                                                                onClick={() => updateWithdrawalStatus(w.id, 'paid')}
+                                                                className="px-6 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 shadow-sm transition-all"
+                                                            >
+                                                                Finalize Payout
+                                                            </button>
+                                                        )}
+                                                        {(w.status === 'paid' || w.status === 'rejected') && (
+                                                            <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Archived</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {withdrawals.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-6 py-20 text-center">
+                                                    <div className="flex flex-col items-center gap-2 grayscale opacity-50">
+                                                        <DollarSign size={40} className="text-gray-300" />
+                                                        <p className="text-sm font-bold text-gray-400">No withdrawal requests found in logs.</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     ) : (

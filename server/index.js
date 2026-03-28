@@ -404,6 +404,17 @@ const runMigrations = async () => {
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_id UUID;
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+            CREATE TABLE IF NOT EXISTS affiliate_withdrawals (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                affiliate_id UUID REFERENCES affiliates(id) ON DELETE CASCADE,
+                amount NUMERIC NOT NULL,
+                status VARCHAR(50) DEFAULT 'pending',
+                payment_method VARCHAR(100),
+                payment_details TEXT,
+                admin_notes TEXT,
+                processed_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
         `).catch(() => { });
 
         console.log('✅ Initial migrations completed');

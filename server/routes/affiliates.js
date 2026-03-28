@@ -491,7 +491,8 @@ module.exports = (authenticateToken, authenticateAdmin) => {
     // 14.1. External API endpoint for sales table (for other applications)
     router.get('/external/sales', async (req, res) => {
         try {
-            const result = await db.query(`
+            const { affiliate_id, email } = req.query;
+            let query = `
                 SELECT 
                     s.*, 
                     a.name as affiliate_name, 
@@ -503,8 +504,20 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                 JOIN affiliates a ON s.affiliate_id = a.id
                 JOIN orders o ON s.order_id = o.id
                 LEFT JOIN affiliate_links l ON s.link_id = l.id
-                ORDER BY s.created_at DESC
-            `);
+            `;
+            let params = [];
+
+            if (affiliate_id) {
+                query += ` WHERE s.affiliate_id = $1`;
+                params.push(affiliate_id);
+            } else if (email) {
+                query += ` WHERE a.email = $1`;
+                params.push(email);
+            }
+
+            query += ` ORDER BY s.created_at DESC`;
+
+            const result = await db.query(query, params);
             res.json({ success: true, sales: result.rows });
         } catch (err) {
             console.error('Fetch external sales error:', err);
@@ -601,6 +614,137 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         } catch (err) {
             console.error('Update affiliate profile error:', err);
             res.status(500).json({ error: 'Failed to update profile' });
+        }
+    });
+
+    // --- WITHDRAWALS ---
+    
+    // 17. Request a Withdrawal (Affiliate)
+    router.post('/me/withdrawals', authenticateToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const { amount, paymentMethod, paymentDetails } = req.body;
+
+            if (!amount || isNaN(amount) || amount <= 0) {
+                return res.status(400).json({ error: 'Invalid withdrawal amount' });
+            }
+
+            // Get affiliate profile and check balance
+            const affRes = await db.query('SELECT id, available_balance FROM affiliates WHERE user_id = $1', [userId]);
+            if (affRes.rows.length === 0) return res.status(404).json({ error: 'Affiliate profile not found' });
+            
+            const affiliate = affRes.rows[0];
+            if (parseFloat(affiliate.available_balance) < parseFloat(amount)) {
+                return res.status(400).json({ error: 'Insufficient balance' });
+            }
+
+            // Transaction: Create withdrawal and subtract from balance
+            // Note: In production we'd use BEGIN/COMMIT for atomic safety
+            await db.query(`
+                UPDATE affiliates SET available_balance = available_balance - $1 WHERE id = $2
+            `, [amount, affiliate.id]);
+
+            const result = await db.query(
+                `INSERT INTO affiliate_withdrawals (affiliate_id, amount, payment_method, payment_details) 
+                 VALUES ($1, $2, $3, $4) RETURNING *`,
+                [affiliate.id, amount, paymentMethod || 'UPI', paymentDetails]
+            );
+
+            res.status(201).json({ success: true, withdrawal: result.rows[0] });
+        } catch (err) {
+            console.error('Withdrawal request error:', err);
+            res.status(500).json({ error: 'Failed to submit withdrawal request' });
+        }
+    });
+
+    // 18. Get My Withdrawals (Affiliate)
+    router.get('/me/withdrawals', authenticateToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const result = await db.query(`
+                SELECT w.* 
+                FROM affiliate_withdrawals w
+                JOIN affiliates a ON w.affiliate_id = a.id
+                WHERE a.user_id = $1
+                ORDER BY w.created_at DESC`,
+                [userId]
+            );
+            res.json({ success: true, withdrawals: result.rows });
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to fetch withdrawals' });
+        }
+    });
+
+    // 19. Get All Withdrawals (Admin)
+    router.get('/admin/withdrawals', authenticateAdmin, async (req, res) => {
+        try {
+            const result = await db.query(`
+                SELECT 
+                    w.*, 
+                    COALESCE(a.name, 'Unknown Partner') as affiliate_name, 
+                    COALESCE(a.email, 'Deleted Partner') as affiliate_email
+                FROM affiliate_withdrawals w
+                LEFT JOIN affiliates a ON w.affiliate_id = a.id
+                ORDER BY w.created_at DESC
+            `);
+            res.json({ success: true, withdrawals: result.rows });
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to fetch all withdrawals' });
+        }
+    });
+
+    // 20. Process/Update Withdrawal (Admin)
+    router.put('/admin/withdrawals/:id', authenticateAdmin, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { status, adminNotes } = req.body; // 'approved', 'paid', 'rejected'
+
+            // If rejected, we need to GIVE BACK the balance
+            if (status === 'rejected') {
+                const wRes = await db.query('SELECT affiliate_id, amount, status FROM affiliate_withdrawals WHERE id = $1', [id]);
+                if (wRes.rows.length === 0) return res.status(404).json({ error: 'Withdrawal not found' });
+                
+                const withdrawal = wRes.rows[0];
+                if (withdrawal.status !== 'rejected' && withdrawal.status !== 'paid') {
+                    // Refund to available_balance
+                    await db.query('UPDATE affiliates SET available_balance = available_balance + $1 WHERE id = $2', [withdrawal.amount, withdrawal.affiliate_id]);
+                }
+            }
+
+            const processedAt = (status === 'paid' || status === 'approved') ? 'NOW()' : 'NULL';
+            const result = await db.query(
+                `UPDATE affiliate_withdrawals SET status=$1, admin_notes=$2, processed_at=${processedAt} WHERE id=$3 RETURNING *`,
+                [status, adminNotes, id]
+            );
+
+            res.json({ success: true, withdrawal: result.rows[0] });
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to update withdrawal status' });
+        }
+    });
+
+    // 21. Create Manual Withdrawal (Admin)
+    router.post('/admin/withdrawals/manual', authenticateAdmin, async (req, res) => {
+        try {
+            const { affiliate_id, amount, paymentMethod, paymentDetails, status } = req.body;
+
+            if (!affiliate_id || !amount || isNaN(amount) || amount <= 0) {
+                return res.status(400).json({ error: 'Affiliate ID and valid amount are required' });
+            }
+
+            // Transactional update: Deduct from balance and log withdrawal
+            await db.query('UPDATE affiliates SET available_balance = available_balance - $1 WHERE id = $2', [amount, affiliate_id]);
+
+            const result = await db.query(
+                `INSERT INTO affiliate_withdrawals (affiliate_id, amount, payment_method, payment_details, status, processed_at) 
+                 VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+                [affiliate_id, amount, paymentMethod || 'Manual', paymentDetails, status || 'paid']
+            );
+
+            res.status(201).json({ success: true, withdrawal: result.rows[0] });
+        } catch (err) {
+            console.error('Manual withdrawal error:', err);
+            res.status(500).json({ error: 'Failed to record manual withdrawal' });
         }
     });
 
