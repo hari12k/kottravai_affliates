@@ -30,6 +30,7 @@ const RefundPolicy = lazy(() => import('@/pages/RefundPolicy'));
 const TermsOfService = lazy(() => import('@/pages/TermsOfService'));
 const PrivacyPolicy = lazy(() => import('@/pages/PrivacyPolicy'));
 const Alliance = lazy(() => import('@/pages/Alliance'));
+const AffiliateDashboard = lazy(() => import('@/pages/AffiliateDashboard'));
 
 // --- Premium Loading Spinner ---
 const LoadingSpinner = () => (
@@ -142,6 +143,7 @@ function App() {
                     <Route path="/faqs" element={<FAQ />} />
                     <Route path="/services" element={<PageViewer slugUri="services" />} />
                     <Route path="/contact" element={<Contact />} />
+                    <Route path="/affiliate/dashboard" element={<AffiliateDashboard />} />
                     <Route path="/shipping-policy" element={<ShippingPolicy />} />
                     <Route path="/refund-policy" element={<RefundPolicy />} />
                     <Route path="/terms-of-service" element={<TermsOfService />} />

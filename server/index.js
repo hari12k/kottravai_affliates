@@ -792,7 +792,8 @@ app.post('/api/products', authenticateAdmin, async (req, res) => {
             name, price, category, image, slug, categorySlug,
             shortDescription, description, keyFeatures, features, images, isBestSeller,
             isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants,
-            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount
+            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount,
+            min_affiliate_level
         } = req.body;
 
         // Robust price parsing (removes commas if present)
@@ -825,7 +826,8 @@ app.post('/api/products', authenticateAdmin, async (req, res) => {
                 is_affiliate_eligible: is_affiliate_eligible !== undefined ? is_affiliate_eligible : true,
                 affiliate_commission_rate: affiliate_commission_rate || 0,
                 affiliate_payout_type: affiliate_payout_type || 'percentage',
-                affiliate_fixed_amount: affiliate_fixed_amount || 0
+                affiliate_fixed_amount: affiliate_fixed_amount || 0,
+                min_affiliate_level: min_affiliate_level || 'Ambassador'
             }])
             .select()
             .single();
@@ -851,7 +853,8 @@ app.put('/api/products/:id', authenticateAdmin, async (req, res) => {
             name, price, category, image, slug, categorySlug,
             shortDescription, description, keyFeatures, features, images, isBestSeller,
             isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants,
-            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount
+            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount,
+            min_affiliate_level
         } = req.body;
 
         const cleanPrice = typeof price === 'string' ? parseFloat(price.replace(/,/g, '')) : Number(price);
@@ -880,7 +883,8 @@ app.put('/api/products/:id', authenticateAdmin, async (req, res) => {
                 is_affiliate_eligible: is_affiliate_eligible !== undefined ? is_affiliate_eligible : true,
                 affiliate_commission_rate: affiliate_commission_rate || 0,
                 affiliate_payout_type: affiliate_payout_type || 'percentage',
-                affiliate_fixed_amount: affiliate_fixed_amount || 0
+                affiliate_fixed_amount: affiliate_fixed_amount || 0,
+                min_affiliate_level: min_affiliate_level || 'Ambassador'
             })
             .eq('id', id)
             .select()

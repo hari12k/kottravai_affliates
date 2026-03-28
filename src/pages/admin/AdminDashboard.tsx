@@ -25,7 +25,7 @@ const AdminDashboard = () => {
     const { partners, addPartner, updatePartner, deletePartner } = usePartners();
 
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean | null>(null);
-    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'alliance-apps' | 'affiliates' | 'affiliate-partners'>('dashboard');
+    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'alliance-apps' | 'affiliates' | 'affiliate-partners' | 'affiliate-dashboard'>('dashboard');
 
     // Admin Session Guard
     useEffect(() => {
@@ -152,6 +152,24 @@ const AdminDashboard = () => {
         }
     };
 
+    // Affiliate Sales state
+    const [affiliateSales, setAffiliateSales] = useState<any[]>([]);
+
+    const fetchAffiliateSales = async () => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            const response = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/sales`, {
+                headers: { 'X-Admin-Secret': adminSecret }
+            });
+            if (response.data.success) {
+                setAffiliateSales(response.data.sales || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch affiliate sales:', error);
+            // Don't show toast automatically on background fetch to avoid spamming
+        }
+    };
+
     useEffect(() => {
         if (view === 'alliance-apps') {
             fetchAllianceApps();
@@ -159,13 +177,17 @@ const AdminDashboard = () => {
         if (view === 'affiliates') {
             fetchAffiliateApplications();
         }
-        if (view === 'affiliate-partners') {
+        if (view === 'affiliate-partners' || view === 'affiliate-dashboard') {
             fetchAffiliates();
+        }
+        if (view === 'affiliate-dashboard') {
+            fetchAffiliateSales();
         }
     }, [view]);
 
     // Innovative State
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedAffiliateFilter, setSelectedAffiliateFilter] = useState<string>('all');
     const [showNotifications, setShowNotifications] = useState(false);
     const [activeTab, setActiveTab] = useState<'overview' | 'analytics'>('overview');
 
@@ -1107,6 +1129,18 @@ const AdminDashboard = () => {
                         <p className="px-4 text-[10px] font-black text-[#8E2A8B] uppercase tracking-[0.2em]">Affiliate Network</p>
                         <div className="space-y-2">
                             <button
+                                onClick={() => { setView('affiliate-dashboard'); resetForm(); }}
+                                className={`w-full text-left px-5 py-3 rounded-2xl transition-all duration-300 font-bold flex items-center justify-between group ${view === 'affiliate-dashboard' ? 'sidebar-item-active' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-xl transition-colors ${view === 'affiliate-dashboard' ? 'bg-[#8E2A8B]/20' : 'bg-gray-800 group-hover:bg-gray-700'}`}>
+                                        <Activity size={18} className={view === 'affiliate-dashboard' ? 'text-[#8E2A8B]' : ''}/>
+                                    </div>
+                                    <span className="text-sm">Affiliate Performance</span>
+                                </div>
+                                {view === 'affiliate-dashboard' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
+                            </button>
+                            <button
                                 onClick={() => { setView('affiliates'); resetForm(); }}
                                 className={`w-full text-left px-5 py-3 rounded-2xl transition-all duration-300 font-bold flex items-center justify-between group ${view === 'affiliates' ? 'sidebar-item-active' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
                             >
@@ -1187,7 +1221,7 @@ const AdminDashboard = () => {
                 <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-100 px-10 py-5 flex justify-between items-center shadow-sm">
                     <div className="flex items-center gap-8 flex-1">
                         <h2 className="text-2xl font-black text-[#2D1B4E] whitespace-nowrap admin-gradient-text">
-                            {view === 'dashboard' ? 'Overview' : view === 'videos' ? 'Video Lab' : view === 'news' ? 'Press Hub' : view === 'reviews' ? 'Feedback Lab' : view === 'stocks' ? 'Inventory' : view === 'orders' ? 'Order Stream' : view === 'users' ? 'Monitoring' : view === 'partners' ? 'Alliances' : view === 'affiliates' ? 'Affiliate Program' : view === 'alliance-apps' ? 'Alliance Catalog' : view === 'add' ? (editingId ? 'Refine Product' : 'Construct Product') : (selectedCategory === 'all' ? 'Inventory Catalog' : categories.find(c => c.slug === selectedCategory)?.name || selectedCategory)}
+                            {view === 'dashboard' ? 'Overview' : view === 'videos' ? 'Video Lab' : view === 'news' ? 'Press Hub' : view === 'reviews' ? 'Feedback Lab' : view === 'stocks' ? 'Inventory' : view === 'orders' ? 'Order Stream' : view === 'users' ? 'Monitoring' : view === 'partners' ? 'Alliances' : view === 'affiliates' ? 'Affiliate Program' : view === 'affiliate-partners' ? 'Affiliate Partners' : view === 'affiliate-dashboard' ? 'Affiliate Performance' : view === 'alliance-apps' ? 'Alliance Catalog' : view === 'add' ? (editingId ? 'Refine Product' : 'Construct Product') : (selectedCategory === 'all' ? 'Inventory Catalog' : categories.find(c => c.slug === selectedCategory)?.name || selectedCategory)}
                         </h2>
 
                         {/* Search Bar */}
@@ -2151,7 +2185,21 @@ const AdminDashboard = () => {
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-bold text-[#2D1B4E]">Active Affiliate Partners</h3>
-                                <div className="text-sm text-gray-500 font-bold uppercase tracking-widest">{activeAffiliates.length} Partners Linked</div>
+                                <div className="flex gap-4 items-center">
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-hover:text-[#8E2A8B] transition-colors">
+                                            <Search size={14} />
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Search ambassadors..."
+                                            className="bg-gray-50 border border-gray-100 pl-9 pr-4 py-2 rounded-xl text-xs font-bold focus:ring-2 focus:ring-[#8E2A8B]/20 transition-all outline-none w-64"
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="text-sm text-gray-500 font-bold uppercase tracking-widest">{activeAffiliates.length} Partners Linked</div>
+                                </div>
                             </div>
 
                             <div className="overflow-x-auto">
@@ -2161,11 +2209,13 @@ const AdminDashboard = () => {
                                             <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Ambassador</th>
                                             <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Referral Code</th>
                                             <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400">Achievement Level</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400 text-right">Performance</th>
+                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-400 text-right">Commission Ledger</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
-                                        {activeAffiliates.map((affiliate) => (
+                                        {activeAffiliates
+                                            .filter(a => !searchQuery || a.name.toLowerCase().includes(searchQuery.toLowerCase()) || a.email.toLowerCase().includes(searchQuery.toLowerCase()))
+                                            .map((affiliate) => (
                                             <tr key={affiliate.id} className="hover:bg-gray-50/50 transition-colors">
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-3">
@@ -2211,6 +2261,240 @@ const AdminDashboard = () => {
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    ) : view === 'affiliate-dashboard' ? (
+                        <div className="space-y-8 animate-in fade-in duration-500">
+                            {/* Dashboard Hero Header */}
+                            <div className="bg-gradient-to-br from-[#2D1B4E] to-[#1A1A1A] rounded-[2rem] p-10 text-white shadow-2xl relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-96 h-96 bg-[#8E2A8B]/10 rounded-full -mr-20 -mt-20 blur-3xl transition-all duration-1000 group-hover:bg-[#8E2A8B]/20"></div>
+                                <div className="relative z-10">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="bg-white/10 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/20 text-xs font-black uppercase tracking-widest text-white/80">
+                                            Affiliate Control Tower
+                                        </div>
+                                    </div>
+                                    <h3 className="text-4xl font-black mb-4 leading-none">Affiliate Performance <span className="text-[#8E2A8B]">Analytics</span></h3>
+                                    <p className="text-white/60 max-w-xl font-medium text-lg">Monitor sales, commissions, and performance of your brand ambassadors in real-time.</p>
+                                </div>
+                            </div>
+
+                            {/* Performance Cards Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {/* Total Affiliate Sales Card */}
+                                <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-xl hover:shadow-2xl transition-all duration-500 group">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="p-3 bg-emerald-50 rounded-2xl group-hover:bg-emerald-500 transition-colors duration-500">
+                                            <TrendingUp size={24} className="text-emerald-500 group-hover:text-white transition-colors duration-500" />
+                                        </div>
+                                        <div className="flex items-center gap-1 text-emerald-600 font-black text-sm">
+                                            <ArrowUpRight size={16} />
+                                            <span>Active</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-3xl font-black text-[#2D1B4E] mb-1">
+                                        ₹{affiliateSales.reduce((sum, s) => sum + parseFloat(s.sale_amount || 0), 0).toLocaleString()}
+                                    </div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Affiliate Revenue</div>
+                                </div>
+
+                                {/* Pending Commissions Card */}
+                                <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-xl hover:shadow-2xl transition-all duration-500 group">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="p-3 bg-amber-50 rounded-2xl group-hover:bg-amber-500 transition-colors duration-500">
+                                            <DollarSign size={24} className="text-amber-500 group-hover:text-white transition-colors duration-500" />
+                                        </div>
+                                        <div className="bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                                            Requires Audit
+                                        </div>
+                                    </div>
+                                    <div className="text-3xl font-black text-[#2D1B4E] mb-1">
+                                        ₹{affiliateSales.filter(s => s.status === 'Completed').reduce((sum, s) => sum + parseFloat(s.commission_amount || 0), 0).toLocaleString()}
+                                    </div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Commission Earnings</div>
+                                </div>
+
+                                {/* Active Partners Card */}
+                                <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-xl hover:shadow-2xl transition-all duration-500 group">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="p-3 bg-purple-50 rounded-2xl group-hover:bg-[#8E2A8B] transition-colors duration-500">
+                                            <Users size={24} className="text-[#8E2A8B] group-hover:text-white transition-colors duration-500" />
+                                        </div>
+                                        <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-1 rounded-lg uppercase tracking-wider">Growth Hub</span>
+                                    </div>
+                                    <div className="text-3xl font-black text-[#2D1B4E] mb-1">
+                                        {activeAffiliates.length}
+                                    </div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Active Brand Partners</div>
+                                </div>
+
+                                {/* Conversions Card */}
+                                <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-xl hover:shadow-2xl transition-all duration-500 group">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="p-3 bg-blue-50 rounded-2xl group-hover:bg-blue-500 transition-colors duration-500">
+                                            <Package size={24} className="text-blue-500 group-hover:text-white transition-colors duration-500" />
+                                        </div>
+                                        <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">Success Rate</span>
+                                    </div>
+                                    <div className="text-3xl font-black text-[#2D1B4E] mb-1">
+                                        {affiliateSales.length}
+                                    </div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tracked Conversions</div>
+                                </div>
+                            </div>
+
+                            {/* Visual Analytics Hub */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl">
+                                    <h4 className="text-xl font-black text-[#2D1B4E] mb-6">Partner Performance Matrix</h4>
+                                    <div className="h-[300px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={activeAffiliates.map(a => ({ name: a.name, commission: parseFloat(a.total_commission || 0) })).sort((a,b) => b.commission - a.commission).slice(0, 5)}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontWeight: '900', fontSize: 10}} dy={10} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontWeight: '900', fontSize: 10}} />
+                                                <Tooltip 
+                                                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: '900'}}
+                                                    cursor={{fill: '#F9FAFB'}}
+                                                />
+                                                <Bar dataKey="commission" fill="#8E2A8B" radius={[8, 8, 8, 8]} barSize={40} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl">
+                                    <h4 className="text-xl font-black text-[#2D1B4E] mb-6">Product Attribution</h4>
+                                    <div className="h-[300px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie
+                                                    data={Object.entries(
+                                                        affiliateSales.reduce((acc: any, s) => {
+                                                            acc[s.product_name || 'Legacy'] = (acc[s.product_name || 'Legacy'] || 0) + parseFloat(s.sale_amount);
+                                                            return acc;
+                                                        }, {})
+                                                    ).map(([name, value]) => ({ name, value })).sort((a: any, b: any) => b.value - a.value).slice(0, 5)}
+                                                    innerRadius={60}
+                                                    outerRadius={100}
+                                                    paddingAngle={5}
+                                                    dataKey="value"
+                                                >
+                                                    {[0, 1, 2, 3, 4].map((index) => (
+                                                        <Cell key={`cell-${index}`} fill={['#2D1B4E', '#8E2A8B', '#FFD700', '#48BB78', '#3182CE'][index % 5]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip 
+                                                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: '900'}}
+                                                />
+                                                <Legend iconType="circle" wrapperStyle={{fontWeight: '900', fontSize: '10px'}} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Sales Stream Table */}
+                            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden">
+                                <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                    <div>
+                                        <h4 className="text-xl font-black text-[#2D1B4E]">Affiliate Sales Stream</h4>
+                                        <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Real-time attribution and commission tracking</p>
+                                    </div>
+                                    <div className="flex gap-4 w-full md:w-auto">
+                                        <select 
+                                            value={selectedAffiliateFilter}
+                                            onChange={(e) => setSelectedAffiliateFilter(e.target.value)}
+                                            className="bg-gray-50 border border-gray-100 px-4 py-2.5 rounded-2xl text-xs font-black text-[#2D1B4E] focus:ring-2 focus:ring-[#8E2A8B]/20 transition-all outline-none"
+                                        >
+                                            <option value="all">Every Ambassador</option>
+                                            {activeAffiliates.map(a => (
+                                                <option key={a.id} value={a.id}>{a.name}</option>
+                                            ))}
+                                        </select>
+                                        <button 
+                                            onClick={fetchAffiliateSales}
+                                            className="bg-gray-50 hover:bg-gray-100 text-[#2D1B4E] px-6 py-2.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-gray-100 flex items-center gap-2"
+                                        >
+                                            <Activity size={16} />
+                                            Refresh
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="bg-gray-50 border-b border-gray-100">
+                                            <tr>
+                                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Order ID</th>
+                                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Affiliate</th>
+                                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Sale Amount</th>
+                                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-center">Commission</th>
+                                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-right">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {affiliateSales
+                                              .filter(s => selectedAffiliateFilter === 'all' || s.affiliate_id === selectedAffiliateFilter)
+                                              .map((sale) => (
+                                                <tr key={sale.id} className="hover:bg-gray-50/50 transition-all group">
+                                                    <td className="px-8 py-5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-1.5 h-6 bg-emerald-500 rounded-full group-hover:h-8 transition-all"></div>
+                                                            <div>
+                                                                <div className="font-black text-[#2D1B4E] text-sm">#{sale.order_number || sale.order_id}</div>
+                                                                <div className="text-[10px] font-bold text-gray-400">{new Date(sale.created_at).toLocaleDateString()}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-8 py-5">
+                                                        <div className="font-black text-[#2D1B4E] text-xs uppercase tracking-wider">{sale.product_name || 'N/A'}</div>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <div className="text-[10px] text-gray-400 font-bold">Via {sale.affiliate_name || 'Partner'}</div>
+                                                            <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+                                                            <code className="text-[9px] bg-purple-50 text-[#8E2A8B] px-1.5 py-0.5 rounded border border-purple-100 font-black uppercase tracking-tighter">
+                                                                {sale.link_slug || 'DIRECT'}
+                                                            </code>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-8 py-5">
+                                                        <div className="font-black text-[#2D1B4E] text-sm">₹{parseFloat(sale.sale_amount).toLocaleString()}</div>
+                                                    </td>
+                                                    <td className="px-8 py-5 text-center">
+                                                        <div className="inline-block px-3 py-1 bg-emerald-50 rounded-lg">
+                                                            <div className="text-xs font-black text-emerald-600">₹{parseFloat(sale.commission_amount).toLocaleString()}</div>
+                                                            <div className="text-[9px] font-black text-emerald-400 uppercase">{sale.commission_rate}% Rate</div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-8 py-5 text-right">
+                                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                                                            sale.status === 'Completed' ? 'bg-emerald-500 text-white' : 
+                                                            sale.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 
+                                                            'bg-rose-50 text-rose-500'
+                                                        }`}>
+                                                            {sale.status}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {affiliateSales.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={5} className="px-8 py-20 text-center">
+                                                        <div className="flex flex-col items-center justify-center gap-6">
+                                                            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-200">
+                                                                <TrendingUp size={48} />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-gray-400 font-black uppercase tracking-[0.2em] text-sm">No sales stream detected</p>
+                                                                <p className="text-gray-300 text-xs font-bold mt-2">Affiliate conversions will appear here in real-time</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     ) : view === 'alliance-apps' ? (
@@ -3361,6 +3645,7 @@ const AdminDashboard = () => {
                                     <tr>
                                         <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Product</th>
                                         <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Category</th>
+                                        <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Level</th>
                                         <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Price</th>
                                     </tr>
                                 </thead>
@@ -3468,6 +3753,19 @@ const AdminDashboard = () => {
                                                     <td className="px-6 py-4 text-sm text-gray-600">
                                                         <span className="bg-gray-100 px-3 py-1 rounded-full text-xs font-bold text-gray-600 uppercase tracking-wide">
                                                             {product.category}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span 
+                                                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                                                                product.min_affiliate_level === 'Kottravai Pro Partner' 
+                                                                ? 'bg-purple-100 text-purple-700 border-purple-200' 
+                                                                : product.min_affiliate_level === 'Kottravai Seller'
+                                                                ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                                                : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                            }`}
+                                                        >
+                                                            {product.min_affiliate_level || 'Ambassador'}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 font-bold text-[#8E2A8B]">₹{product.price}</td>

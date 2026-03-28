@@ -165,6 +165,121 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         }
     });
 
+    // 7.1. Get Dashboard Stats (Requires Auth)
+    router.get('/me/dashboard-stats', authenticateToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            
+            // 1. Get affiliate profile and basic stats
+            const affRes = await db.query('SELECT * FROM affiliates WHERE user_id = $1', [userId]);
+            if (affRes.rows.length === 0) return res.status(404).json({ error: 'Affiliate profile not found' });
+            
+            const affiliate = affRes.rows[0];
+            const affiliateId = affiliate.id;
+
+            // 2. Get click and conversion stats from links
+            const linkStatsRes = await db.query(`
+                SELECT 
+                    COALESCE(SUM(total_clicks), 0) as total_clicks,
+                    COALESCE(SUM(total_conversions), 0) as total_conversions
+                FROM affiliate_links
+                WHERE affiliate_id = $1
+            `, [affiliateId]);
+            
+            const linkStats = linkStatsRes.rows[0];
+            const totalClicks = parseInt(linkStats.total_clicks) || 0;
+            const totalConversions = parseInt(linkStats.total_conversions) || 0;
+            const conversionRate = totalClicks > 0 ? ((totalConversions / totalClicks) * 100).toFixed(2) : 0;
+
+            // 3. Get commission breakdown
+            const commissionRes = await db.query(`
+                SELECT 
+                    COALESCE(SUM(CASE WHEN status = 'pending' THEN commission_amount ELSE 0 END), 0) as pending_commission,
+                    COALESCE(SUM(CASE WHEN status = 'approved' THEN commission_amount ELSE 0 END), 0) as approved_commission,
+                    COALESCE(SUM(CASE WHEN status = 'paid' THEN commission_amount ELSE 0 END), 0) as paid_commission
+                FROM affiliate_sales
+                WHERE affiliate_id = $1
+            `, [affiliateId]);
+            
+            const commStats = commissionRes.rows[0];
+
+            // 4. Get last 7 days performance (clicks and sales)
+            const performanceRes = await db.query(`
+                WITH days AS (
+                    SELECT generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day')::date AS day
+                )
+                SELECT 
+                    d.day,
+                    COALESCE(SUM(s.commission_amount), 0) as commission,
+                    COALESCE(COUNT(s.id), 0) as sales
+                FROM days d
+                LEFT JOIN affiliate_sales s ON DATE(s.created_at AT TIME ZONE 'UTC') = d.day AND s.affiliate_id = $1
+                GROUP BY d.day
+                ORDER BY d.day ASC
+            `, [affiliateId]);
+            
+            const clicksPerformanceRes = await db.query(`
+                WITH days AS (
+                    SELECT generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day')::date AS day
+                )
+                SELECT 
+                    d.day,
+                    COALESCE(COUNT(c.id), 0) as clicks
+                FROM days d
+                LEFT JOIN affiliate_links l ON l.affiliate_id = $1
+                LEFT JOIN affiliate_clicks c ON c.link_id = l.id AND DATE(c.created_at AT TIME ZONE 'UTC') = d.day
+                GROUP BY d.day
+                ORDER BY d.day ASC
+            `, [affiliateId]);
+
+            const performance = performanceRes.rows.map((row, index) => ({
+                date: row.day,
+                sales: parseInt(row.sales),
+                commission: parseFloat(row.commission),
+                clicks: parseInt(clicksPerformanceRes.rows[index].clicks)
+            }));
+
+            // 5. Recent Sales
+            const recentSalesRes = await db.query(`
+                SELECT s.*, o.order_id as order_number, p.name as product_name
+                FROM affiliate_sales s
+                JOIN orders o ON s.order_id = o.id
+                LEFT JOIN affiliate_links l ON s.link_id = l.id
+                LEFT JOIN products p ON l.product_id = p.id
+                WHERE s.affiliate_id = $1
+                ORDER BY s.created_at DESC
+                LIMIT 5
+            `, [affiliateId]);
+
+            res.json({
+                success: true,
+                stats: {
+                    total_revenue: parseFloat(affiliate.total_sales) || 0,
+                    total_commission: parseFloat(affiliate.total_commission) || 0,
+                    available_balance: parseFloat(affiliate.available_balance) || 0,
+                    pending_commission: parseFloat(commStats.pending_commission) || 0,
+                    approved_commission: parseFloat(commStats.approved_commission) || 0,
+                    paid_commission: parseFloat(commStats.paid_commission) || 0,
+                    total_clicks: totalClicks,
+                    total_orders: totalConversions,
+                    conversion_rate: parseFloat(conversionRate)
+                },
+                performance,
+                recent_sales: recentSalesRes.rows,
+                profile: {
+                    name: affiliate.name,
+                    referral_code: affiliate.referral_code,
+                    level: affiliate.level,
+                    status: affiliate.status
+                }
+            });
+        } catch (err) {
+            console.error('Affiliate Dashboard Stats Error:', err);
+            res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+        }
+    });
+
+
     // 8. Update Payment Info (Requires Auth)
     router.put('/me/payment-info', authenticateToken, async (req, res) => {
         try {
@@ -357,10 +472,18 @@ module.exports = (authenticateToken, authenticateAdmin) => {
     router.get('/admin/sales', authenticateAdmin, async (req, res) => {
         try {
             const result = await db.query(`
-                SELECT s.*, a.name as affiliate_name, a.email as affiliate_email, o.order_id as order_number 
+                SELECT 
+                    s.*, 
+                    a.name as affiliate_name, 
+                    a.email as affiliate_email, 
+                    o.order_id as order_number,
+                    p.name as product_name,
+                    l.slug as link_slug
                 FROM affiliate_sales s
                 JOIN affiliates a ON s.affiliate_id = a.id
                 JOIN orders o ON s.order_id = o.id
+                LEFT JOIN affiliate_links l ON s.link_id = l.id
+                LEFT JOIN products p ON l.product_id = p.id
                 ORDER BY s.created_at DESC
             `);
             res.json({ success: true, sales: result.rows });
@@ -373,10 +496,18 @@ module.exports = (authenticateToken, authenticateAdmin) => {
     router.get('/external/sales', async (req, res) => {
         try {
             const result = await db.query(`
-                SELECT s.*, a.name as affiliate_name, a.email as affiliate_email, o.order_id as order_number 
+                SELECT 
+                    s.*, 
+                    a.name as affiliate_name, 
+                    a.email as affiliate_email, 
+                    o.order_id as order_number,
+                    p.name as product_name,
+                    l.slug as link_slug
                 FROM affiliate_sales s
                 JOIN affiliates a ON s.affiliate_id = a.id
                 JOIN orders o ON s.order_id = o.id
+                LEFT JOIN affiliate_links l ON s.link_id = l.id
+                LEFT JOIN products p ON l.product_id = p.id
                 ORDER BY s.created_at DESC
             `);
             res.json({ success: true, sales: result.rows });

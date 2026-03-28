@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import MainLayout from '@/layouts/MainLayout';
-import { User, Package, Heart, LogOut, ArrowRight, ShieldCheck, ShoppingBag, CreditCard, ChevronRight } from 'lucide-react';
+import { User, Package, Heart, LogOut, ArrowRight, ShieldCheck, ShoppingBag, CreditCard, ChevronRight, Activity } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { useOrders } from '@/context/OrderContext';
@@ -17,6 +17,7 @@ const Account = () => {
     const [isUpdating, setIsUpdating] = useState(false);
     const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
     const [newPassword, setNewPassword] = useState('');
+    const [isAffiliate, setIsAffiliate] = useState(false);
 
     // User Profile State
     const [fullName, setFullName] = useState(user?.fullName || '');
@@ -35,7 +36,23 @@ const Account = () => {
             setActiveTab('profile');
             setMessage({ type: 'success', text: 'Reset link confirmed. Please set your new password below.' });
         }
-    }, []);
+
+        // 🟢 GAP FIX: Check if the user is an affiliate
+        const checkAffiliateStatus = async () => {
+            if (!isAuthenticated) return;
+            try {
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/me/dashboard-stats`, {
+                    headers: { 'Authorization': `Bearer ${sessionStorage.getItem('kottravai_token')}` }
+                });
+                if (response.ok) {
+                    setIsAffiliate(true);
+                }
+            } catch (err) {
+                console.error('Affiliate check failed:', err);
+            }
+        };
+        checkAffiliateStatus();
+    }, [isAuthenticated]);
 
     const handleUpdateProfile = async () => {
         setIsUpdating(true);
@@ -146,6 +163,24 @@ const Account = () => {
                                     Update Password <ArrowRight size={16} />
                                 </button>
                             </div>
+
+                            {isAffiliate && (
+                                <div className="bg-gradient-to-br from-[#2D1B4E] to-[#8E2A8B] p-6 rounded-3xl shadow-xl text-white md:col-span-full group cursor-pointer" onClick={() => navigate('/affiliate/dashboard')}>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="p-3 bg-white/10 rounded-2xl text-white">
+                                            <Activity size={24} />
+                                        </div>
+                                        <div className="bg-white/20 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                            Active Partner
+                                        </div>
+                                    </div>
+                                    <h3 className="font-bold text-xl mb-1">Affiliate Performance Hub</h3>
+                                    <p className="text-white/70 text-sm mb-6 max-w-md">Track your referrals, commissions, and growth analytics in your premium dashboard.</p>
+                                    <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest group-hover:translate-x-2 transition-transform">
+                                        Enter Dashboard <ArrowRight size={16} />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 );
@@ -402,13 +437,18 @@ const Account = () => {
                                         { id: 'dashboard', label: 'Dashboard', icon: ShieldCheck },
                                         { id: 'profile', label: 'Profile', icon: User },
                                         { id: 'orders', label: 'Orders', icon: Package },
-                                        { id: 'wishlist', label: 'Wishlist', icon: Heart }
+                                        { id: 'wishlist', label: 'Wishlist', icon: Heart },
+                                        ...(isAffiliate ? [{ id: 'affiliate', label: 'Affiliate Hub', icon: Activity }] : [])
                                     ].map((item) => (
                                         <button
                                             key={item.id}
                                             onClick={() => {
-                                                setActiveTab(item.id);
-                                                setMessage(null);
+                                                if (item.id === 'affiliate') {
+                                                    navigate('/affiliate/dashboard');
+                                                } else {
+                                                    setActiveTab(item.id);
+                                                    setMessage(null);
+                                                }
                                             }}
                                             className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-bold text-xs md:text-sm transition-all whitespace-nowrap ${activeTab === item.id
                                                 ? 'bg-[#b5128f] text-white shadow-lg md:shadow-xl shadow-[#b5128f]/20 md:translate-x-1'
