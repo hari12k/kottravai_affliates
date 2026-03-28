@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const axios = require('axios');
+const crypto = require('crypto');
 const path = require('path');
 const db = require('./db');
 const nodemailer = require('nodemailer');
@@ -2284,7 +2285,6 @@ app.use('/api/affiliates', affiliateRouter);
 
 // Razorpay Integration
 const Razorpay = require('razorpay');
-const crypto = require('crypto');
 
 // Initialize Razorpay
 // NOTE: Using environment variables for keys is recommended

@@ -349,6 +349,7 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                         } else {
                             throw authError;
                         }
+                    } else {
                         userId = authData.user.id;
                         console.log(`✅ Created new user ID: ${userId}`);
                     }
