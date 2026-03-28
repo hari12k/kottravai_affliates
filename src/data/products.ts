@@ -60,6 +60,7 @@ export interface Product {
     affiliate_commission_rate?: number;
     affiliate_payout_type?: 'percentage' | 'fixed';
     affiliate_fixed_amount?: number;
+    min_affiliate_level?: string;
 }
 
 // Sample product to visualize changes immediately
