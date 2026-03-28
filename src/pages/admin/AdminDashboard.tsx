@@ -512,7 +512,7 @@ const AdminDashboard = () => {
         affiliate_commission_rate: '10',
         affiliate_payout_type: 'percentage' as 'percentage' | 'fixed',
         affiliate_fixed_amount: '0',
-        min_affiliate_level: 'Ambassador'
+        min_affiliate_level: 'Kottravai Ambassador'
     });
 
     const [mainImage, setMainImage] = useState<string>('');
@@ -634,7 +634,7 @@ const AdminDashboard = () => {
             affiliate_commission_rate: (product.affiliate_commission_rate || '10').toString(),
             affiliate_payout_type: product.affiliate_payout_type || 'percentage',
             affiliate_fixed_amount: (product.affiliate_fixed_amount || '0').toString(),
-            min_affiliate_level: product.min_affiliate_level || 'Ambassador'
+            min_affiliate_level: product.min_affiliate_level || 'Kottravai Ambassador'
         });
         setMainImage(product.image);
         setOtherImages(product.images || []);
@@ -704,7 +704,7 @@ const AdminDashboard = () => {
             affiliate_commission_rate: '10',
             affiliate_payout_type: 'percentage',
             affiliate_fixed_amount: '0',
-            min_affiliate_level: 'Ambassador'
+            min_affiliate_level: 'Kottravai Ambassador'
         });
         setMainImage('');
         setMainImageFile(null);
@@ -2807,7 +2807,7 @@ const AdminDashboard = () => {
                                                                 onChange={e => setFormData({ ...formData, min_affiliate_level: e.target.value })}
                                                                 className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-[#8E2A8B] focus:border-[#8E2A8B] outline-none transition-all bg-white font-bold text-sm shadow-sm hover:border-[#8E2A8B] cursor-pointer"
                                                             >
-                                                                <option value="Ambassador">Ambassador</option>
+                                                                <option value="Kottravai Ambassador">Kottravai Ambassador</option>
                                                                 <option value="Kottravai Seller">Kottravai Seller</option>
                                                                 <option value="Kottravai Pro Partner">Kottravai Pro Partner</option>
                                                             </select>
@@ -3765,7 +3765,7 @@ const AdminDashboard = () => {
                                                                 : 'bg-emerald-100 text-emerald-700 border-emerald-200'
                                                             }`}
                                                         >
-                                                            {product.min_affiliate_level || 'Ambassador'}
+                                                            {product.min_affiliate_level || 'Kottravai Ambassador'}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 font-bold text-[#8E2A8B]">₹{product.price}</td>

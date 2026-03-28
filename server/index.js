@@ -270,10 +270,21 @@ const runMigrations = async () => {
             await db.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ${col} ${type}`).catch(() => { });
         }
 
+        // Password Recovery Tokens (For reset links)
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                email VARCHAR(255) NOT NULL,
+                token VARCHAR(255) NOT NULL UNIQUE,
+                expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `).catch(() => { });
+
         // Data Normalization: Level names
         await db.query(`
-            UPDATE affiliates SET level = 'Ambassador' WHERE level = 'Kottravai Ambassador';
-            UPDATE products SET min_affiliate_level = 'Ambassador' WHERE min_affiliate_level = 'Kottravai Ambassador' OR min_affiliate_level IS NULL;
+            UPDATE affiliates SET level = 'Kottravai Ambassador' WHERE level = 'Ambassador';
+            UPDATE products SET min_affiliate_level = 'Kottravai Ambassador' WHERE min_affiliate_level = 'Ambassador' OR min_affiliate_level IS NULL;
         `).catch(() => { });
 
         // Create missing tables
@@ -381,9 +392,17 @@ const runMigrations = async () => {
                 sale_amount NUMERIC NOT NULL,
                 commission_rate NUMERIC(5,2) NOT NULL,
                 commission_amount NUMERIC NOT NULL,
+                product_id UUID,
+                product_name VARCHAR(255),
+                quantity INTEGER DEFAULT 1,
                 status VARCHAR(50) DEFAULT 'pending',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Ensure columns exist for existing tables
+            ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_id UUID;
+            ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
+            ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
         `).catch(() => { });
 
         console.log('✅ Initial migrations completed');
@@ -1182,55 +1201,62 @@ const finalizeOrder = async (orderData, paymentId) => {
                     // Fetch product details for precise commission calculation
                     const itemIds = orderData.items.map(i => i.id).filter(id => id);
                     if (itemIds.length > 0) {
-                        const prodRes = await db.query('SELECT id, is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount FROM products WHERE id = ANY($1)', [itemIds]);
+                        const prodRes = await db.query('SELECT id, name, is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount FROM products WHERE id = ANY($1)', [itemIds]);
                         const dbProds = prodRes.rows;
                         
-                        for (const item of orderData.items) {
-                            const product = dbProds.find(p => p.id.toString() === item.id.toString());
-                            if (product && product.is_affiliate_eligible) {
-                                // 🟢 GAP FIX: Self-Referral Protection
-                                // If customer email matches affiliate email, skip commission
-                                if (orderData.customerEmail?.toLowerCase() === affiliate.email?.toLowerCase()) {
-                                    console.log(`🚫 [SELF_REFERRAL_BLOCKED] Affiliate ${affiliate.name} tried to refer themselves.`);
-                                    continue; 
-                                }
+                        // 🟢 GAP FIX: Self-Referral Protection
+                        if (orderData.customerEmail?.toLowerCase() === affiliate.email?.toLowerCase()) {
+                            console.log(`🚫 [SELF_REFERRAL_BLOCKED] Affiliate ${affiliate.name} tried to refer themselves.`);
+                        } else {
+                            // Process each item individually for granular reporting as requested
+                            for (const item of orderData.items) {
+                                const product = dbProds.find(p => p.id.toString() === item.id.toString());
+                                if (product && product.is_affiliate_eligible) {
+                                    const rate = parseFloat(product.affiliate_commission_rate) || 0;
+                                    const fixed = parseFloat(product.affiliate_fixed_amount) || 0;
+                                    const type = product.affiliate_payout_type || 'percentage';
+                                    const price = parseFloat(item.price) || 0;
+                                    const qty = parseInt(item.quantity) || 1;
+                                    
+                                    let itemCommission = 0;
+                                    if (type === 'percentage') {
+                                        itemCommission = (price * rate / 100) * qty;
+                                    } else {
+                                        itemCommission = fixed * qty;
+                                    }
 
-                                const rate = parseFloat(product.affiliate_commission_rate) || 0;
-                                const fixed = parseFloat(product.affiliate_fixed_amount) || 0;
-                                const type = product.affiliate_payout_type || 'percentage';
-                                const price = parseFloat(item.price) || 0;
-                                const qty = parseInt(item.quantity) || 1;
-                                
-                                totalEligiblePrice += price * qty;
-
-                                if (type === 'percentage') {
-                                    totalCommissionAmount += (price * rate / 100) * qty;
-                                } else {
-                                    totalCommissionAmount += fixed * qty;
+                                    if (itemCommission > 0) {
+                                        totalCommissionAmount += itemCommission;
+                                        totalEligiblePrice += price * qty;
+                                        
+                                        // Insert individual sale record for this specific product
+                                        await db.query(`
+                                            INSERT INTO affiliate_sales (
+                                                affiliate_id, order_id, link_id, product_id, product_name, 
+                                                quantity, sale_amount, commission_rate, commission_amount, status
+                                            )
+                                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                                        `, [
+                                            affiliate.id, row.id, linkId, product.id, product.name,
+                                            qty, price * qty, (type === 'percentage' ? rate : (itemCommission / (price * qty) * 100)).toFixed(2),
+                                            itemCommission, 'approved'
+                                        ]);
+                                    }
                                 }
                             }
                         }
                     }
 
                     if (totalCommissionAmount > 0) {
-                        // Calculate an effective average commission rate for the record
-                        const averageRate = totalEligiblePrice > 0 ? (totalCommissionAmount / totalEligiblePrice) * 100 : 0;
-
-                        // Insert into affiliate_sales accurately
-                        const saleRes = await db.query(`
-                            INSERT INTO affiliate_sales (affiliate_id, order_id, link_id, sale_amount, commission_rate, commission_amount, status)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7)
-                            RETURNING id
-                        `, [affiliate.id, row.id, linkId, calc.totalCents / 100, averageRate.toFixed(2), totalCommissionAmount, 'approved']); // Set to approved as payment is confirmed
-
-                        // Update Affiliate Cumulative Balances
+                        // Update Affiliate Cumulative Balances once per order
+                        // Note: Using totalEligiblePrice instead of calc.totalCents to exclude shipping/non-eligible items from affiliate metrics
                         await db.query(`
                             UPDATE affiliates 
                             SET total_sales = total_sales + $1,
                                 total_commission = total_commission + $2,
                                 available_balance = available_balance + $2
                             WHERE id = $3
-                        `, [calc.totalCents / 100, totalCommissionAmount, affiliate.id]);
+                        `, [totalEligiblePrice, totalCommissionAmount, affiliate.id]);
 
                         // Link Order to Affiliate ID
                         await db.query('UPDATE orders SET affiliate_id = $1, referral_code = $2 WHERE id = $3', [affiliate.id, referralCode, row.id]);
@@ -1240,7 +1266,7 @@ const finalizeOrder = async (orderData, paymentId) => {
                             await db.query('UPDATE affiliate_links SET total_conversions = total_conversions + 1 WHERE id = $1', [linkId]);
                         }
                         
-                        console.log(`🎯 [AFFILIATE_SUCCESS] Linked order ${row.id} to affiliate ${affiliate.name} | Amount: ₹${totalCommissionAmount}`);
+                        console.log(`🎯 [AFFILIATE_SUCCESS] Linked items from order ${row.id} to ${affiliate.name} | Total: ₹${totalCommissionAmount}`);
                     }
                 }
             } catch (affError) {
@@ -2037,6 +2063,151 @@ app.post('/api/auth/reset-password-with-otp', async (req, res) => {
     } catch (err) {
         console.error('Reset Password Error:', err);
         res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+    }
+});
+
+// Send Password Reset Link (Link-based)
+app.post('/api/auth/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+
+        // Check if user exists in Supabase
+        const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+        if (listError) throw listError;
+
+        const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        if (!user) {
+            return res.status(404).json({ error: 'No account found with this email address' });
+        }
+
+        // Generate secure token
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 3600000); // 1 hour
+
+        // Clear existing tokens for this email and save new one
+        await db.query('DELETE FROM password_reset_tokens WHERE LOWER(email) = LOWER($1)', [email]);
+        await db.query(
+            'INSERT INTO password_reset_tokens (email, token, expires_at) VALUES ($1, $2, $3)',
+            [email.toLowerCase(), token, expiresAt]
+        );
+
+        // Build reset link (pointing to another application if specified, or default)
+        const appUrl = process.env.VITE_APP_URL || process.env.FRONTEND_URL || 'https://kottravai.in';
+        const resetLink = `${appUrl}/reset-password?token=${token}`;
+
+        // Send Email
+        const emailHtml = `
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #2D1B4E;">
+                <div style="background: linear-gradient(to right, #2D1B4E, #8E2A8B); padding: 40px 20px; text-align: center; border-radius: 12px 12px 0 0;">
+                    <h1 style="color: white; margin: 0; font-size: 28px;">Password Reset Request</h1>
+                </div>
+                <div style="padding: 40px 30px; background: white; border: 1px solid #edf2f7; border-top: none; border-radius: 0 0 12px 12px;">
+                    <p style="font-size: 16px; line-height: 1.6;">Hello,</p>
+                    <p style="font-size: 16px; line-height: 1.6;">We received a request to reset the password for your account. Click the button below to proceed:</p>
+                    <div style="text-align: center; margin: 40px 0;">
+                        <a href="${resetLink}" style="background: #8E2A8B; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset My Password</a>
+                    </div>
+                    <p style="font-size: 14px; color: #718096; line-height: 1.6;">This link will expire in 1 hour. If you did not request this, please ignore this email.</p>
+                    <hr style="border: none; border-top: 1px solid #edf2f7; margin: 30px 0;">
+                    <p style="font-size: 12px; color: #a0aec0;">If you're having trouble clicking the button, copy and paste this URL into your browser:</p>
+                    <p style="font-size: 11px; color: #8E2A8B; word-break: break-all;">${resetLink}</p>
+                </div>
+            </div>
+        `;
+
+        await sendEmail({
+            to: email,
+            subject: 'Reset Your Password | Kottravai',
+            html: emailHtml,
+            type: 'contact'
+        });
+
+        res.json({ success: true, message: 'Password reset link sent to your email' });
+    } catch (err) {
+        console.error('Forgot Password Link Error:', err);
+        res.status(500).json({ error: 'Failed to process request. Please try again later.' });
+    }
+});
+
+// Reset Password (using Token from link)
+app.post('/api/auth/reset-password', async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        if (!token || !newPassword) {
+            return res.status(400).json({ error: 'Token and new password are required' });
+        }
+
+        // 1. Verify token
+        const tokenRes = await db.query(
+            'SELECT * FROM password_reset_tokens WHERE token = $1 AND expires_at > NOW()',
+            [token]
+        );
+
+        if (tokenRes.rows.length === 0) {
+            return res.status(400).json({ error: 'Invalid or expired reset token' });
+        }
+
+        const { email } = tokenRes.rows[0];
+
+        // 2. Find user in Supabase
+        const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+        if (listError) throw listError;
+
+        const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        if (!user) return res.status(404).json({ error: 'User no longer exists' });
+
+        // 3. Update password in Supabase
+        const { error: updateError } = await supabase.auth.admin.updateUserById(
+            user.id,
+            { password: newPassword }
+        );
+
+        if (updateError) throw updateError;
+
+        // 4. Delete token
+        await db.query('DELETE FROM password_reset_tokens WHERE email = $1', [email]);
+
+        res.json({ success: true, message: 'Your password has been reset successfully. You can now login with your new password.' });
+    } catch (err) {
+        console.error('Reset Password Token Error:', err);
+        res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+    }
+});
+
+// Change Password (Authenticated session)
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    try {
+        const { oldPassword, newPassword } = req.body;
+        const userEmail = req.user.email;
+
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({ error: 'Old password and new password are required' });
+        }
+
+        // 1. Verify old password by attempting a sign-in (Supabase security best practice)
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: userEmail,
+            password: oldPassword
+        });
+
+        if (authError || !authData.user) {
+            return res.status(401).json({ error: 'Incorrect old password' });
+        }
+
+        // 2. Update to new password using Admin SDK
+        const { error: updateError } = await supabase.auth.admin.updateUserById(
+            req.user.id,
+            { password: newPassword }
+        );
+
+        if (updateError) throw updateError;
+
+        res.json({ success: true, message: 'Password updated successfully' });
+    } catch (err) {
+        console.error('Change Password Error:', err);
+        res.status(500).json({ error: 'Failed to update password. Please try again.' });
     }
 });
 

@@ -74,7 +74,7 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
         affiliate_commission_rate: p.affiliate_commission_rate || 0,
         affiliate_payout_type: p.affiliate_payout_type || 'percentage',
         affiliate_fixed_amount: p.affiliate_fixed_amount || 0,
-        min_affiliate_level: p.min_affiliate_level || p.minAffiliateLevel || 'Ambassador'
+        min_affiliate_level: p.min_affiliate_level || p.minAffiliateLevel || 'Kottravai Ambassador'
     });
 
     const lastFetchRef = useRef<number>(0);
