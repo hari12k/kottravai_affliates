@@ -335,27 +335,19 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                             console.log(`⚠️ Auth creation error/warning: ${authError.message}`);
                             // If user already exists, we try to find them by email
                             if (authError.message.includes('already registered') || authError.status === 422 || authError.code === 'email_exists') {
-                                // Important: Find the user by email using the dedicated helper
-                                const { data: foundUser, error: findError } = await supabase.auth.admin.getUserByEmail(application.email);
-                                if (!findError && foundUser?.user) {
-                                    userId = foundUser.user.id;
-                                    userIdWasFoundInSupabase = true;
-                                    console.log(`✅ Using existing user ID from Supabase lookup: ${userId}`);
-                                } else {
-                                    // Fallback: search the list if lookup failed
-                                    const { data: usersData, error: listError } = await supabase.auth.admin.listUsers();
-                                    if (!listError) {
-                                        const matchedUser = usersData.users.find(u => u.email?.toLowerCase() === application.email.toLowerCase());
-                                        if (matchedUser) {
-                                            userId = matchedUser.id;
-                                            userIdWasFoundInSupabase = true;
-                                            console.log(`✅ Using existing user ID from Supabase list fallback: ${userId}`);
-                                        }
+                                // Important: Find the user by email using listUsers and filtering
+                                const { data: usersData, error: listError } = await supabase.auth.admin.listUsers();
+                                if (!listError && usersData?.users) {
+                                    const matchedUser = usersData.users.find(u => u.email?.toLowerCase() === application.email.toLowerCase());
+                                    if (matchedUser) {
+                                        userId = matchedUser.id;
+                                        userIdWasFoundInSupabase = true;
+                                        console.log(`✅ Using existing user ID found via Supabase list: ${userId}`);
                                     }
                                 }
                                 
                                 if (!userId) {
-                                    throw new Error(`User with email ${application.email} exists but could not be located for mapping.`);
+                                    throw new Error(`User with email ${application.email} already exists but was not found in the first batch of Supabase users.`);
                                 }
                             } else {
                                 throw authError;
@@ -374,18 +366,42 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                     });
                     console.log(`✅ Updated metadata for user ${userId}`);
 
-                    // Create Affiliate Profile
-                    console.log(`📝 Inserting affiliate profile for ${userId}`);
-                    await db.query(`
-                        INSERT INTO affiliates (user_id, name, email, phone, city, referral_code, status, instagram_link, facebook_link, twitter_link, youtube_link)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                        ON CONFLICT (user_id) DO UPDATE SET status = EXCLUDED.status
-                    `, [
-                        userId, application.name, application.email, application.phone, application.city, 
-                        referralCode, 'Approved', 
-                        application.instagram_link, application.facebook_link, application.twitter_link, application.youtube_link
-                    ]);
-                    console.log(`✅ Profile created for ${application.email}`);
+                    // Create or Update Affiliate Profile (Idempotent check)
+                    console.log(`📝 Checking existing affiliate for ${application.email} or ${userId}`);
+                    const existingAffRes = await db.query('SELECT id FROM affiliates WHERE user_id = $1 OR email = $2', [userId, application.email]);
+                    
+                    if (existingAffRes.rows.length > 0) {
+                        const affId = existingAffRes.rows[0].id;
+                        console.log(`🔄 Updating existing affiliate profile ${affId}`);
+                        await db.query(`
+                            UPDATE affiliates SET 
+                                status = 'Approved',
+                                user_id = $1,
+                                name = $2,
+                                phone = $3,
+                                city = $4,
+                                instagram_link = $5,
+                                facebook_link = $6,
+                                twitter_link = $7,
+                                youtube_link = $8
+                            WHERE id = $9
+                        `, [
+                            userId, application.name, application.phone, application.city, 
+                            application.instagram_link, application.facebook_link, application.twitter_link, application.youtube_link,
+                            affId
+                        ]);
+                    } else {
+                        console.log(`📝 Inserting new affiliate profile for ${application.email}`);
+                        await db.query(`
+                            INSERT INTO affiliates (user_id, name, email, phone, city, referral_code, status, instagram_link, facebook_link, twitter_link, youtube_link)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                        `, [
+                            userId, application.name, application.email, application.phone, application.city, 
+                            referralCode, 'Approved', 
+                            application.instagram_link, application.facebook_link, application.twitter_link, application.youtube_link
+                        ]);
+                    }
+                    console.log(`✅ Affiliate profile successfully finalized for ${application.email}`);
 
                     // Send Welcome Email
                     console.log(`📧 Sending welcome email to ${application.email}`);
