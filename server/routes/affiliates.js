@@ -11,18 +11,18 @@ module.exports = (authenticateToken, authenticateAdmin) => {
     // 1. Submit Affiliate Application (Public or Auth)
     router.post('/apply', async (req, res) => {
         try {
-            const { name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason } = req.body;
+            const { name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, user_id } = req.body;
             
             // Check if already applied
-            const exists = await db.query('SELECT id FROM affiliate_applications WHERE email = $1', [email]);
+            const exists = await db.query('SELECT id FROM affiliate_applications WHERE email = $1 AND status != \'rejected\'', [email]);
             if (exists.rows.length > 0) {
-                return res.status(400).json({ error: 'An application with this email already exists' });
+                return res.status(400).json({ error: 'An application with this email already exists or is under review' });
             }
 
             const result = await db.query(
-                `INSERT INTO affiliate_applications (name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-                [name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason]
+                `INSERT INTO affiliate_applications (name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, user_id) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+                [name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, user_id]
             );
             res.status(201).json({ success: true, application: result.rows[0] });
         } catch (err) {
@@ -113,27 +113,14 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         }
     });
 
-    // 6. Get Affiliated Products List (Now Filtered by Level)
+    // 6. Get Affiliated Products List
     router.get('/products', authenticateToken, async (req, res) => {
         try {
-            const userId = req.user.id;
-            const affRes = await db.query('SELECT level FROM affiliates WHERE user_id = $1', [userId]);
-            if (affRes.rows.length === 0) return res.status(404).json({ error: 'Affiliate profile not found' });
-            
-            const affLevel = affRes.rows[0].level || 'Ambassador';
-            
-            // Define level hierarchy
-            let allowedLevels = ['Ambassador'];
-            if (affLevel === 'Kottravai Seller') allowedLevels = ['Ambassador', 'Kottravai Seller'];
-            if (affLevel === 'Kottravai Pro Partner') allowedLevels = ['Ambassador', 'Kottravai Seller', 'Kottravai Pro Partner'];
-
             const result = await db.query(
-                `SELECT id, name, slug, image, price, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount, min_affiliate_level 
+                `SELECT id, name, slug, image, price, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount 
                  FROM products 
                  WHERE is_affiliate_eligible = true 
-                 AND is_live = true 
-                 AND min_affiliate_level = ANY($1)`,
-                [allowedLevels]
+                 AND is_live = true`
             );
             res.json({ success: true, products: result.rows });
         } catch (err) {
@@ -319,39 +306,47 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                 const tempPassword = crypto.randomBytes(6).toString('hex'); // 12-char password
                 const referralCode = `${application.name.split(' ')[0].toUpperCase().replace(/[^A-Z0-9]/g, '')}${Math.floor(1000 + Math.random() * 9000)}`;
 
-                let userId;
+                let userId = application.user_id;
                 
                 try {
                     console.log(`🚀 Starting onboarding for ${application.email}`);
                     
-                    // Create User in Supabase Auth
-                    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-                        email: application.email,
-                        password: tempPassword,
-                        email_confirm: true,
-                        user_metadata: { name: application.name, role: 'affiliate' }
-                    });
+                    if (!userId) {
+                        // Create User in Supabase Auth if not already linked
+                        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+                            email: application.email,
+                            password: tempPassword,
+                            email_confirm: true,
+                            user_metadata: { full_name: application.name, role: 'affiliate' }
+                        });
 
-                    if (authError) {
-                        console.log(`⚠️ Auth creation error/warning: ${authError.message}`);
-                        // If user already exists, we try to find them
-                        if (authError.message.includes('already registered') || authError.status === 422) {
-                            const { data: existingUsers, error: listError } = await supabase.auth.admin.listUsers();
-                            if (listError) throw listError;
-                            
-                            const user = existingUsers.users.find(u => u.email.toLowerCase() === application.email.toLowerCase());
-                            if (user) {
-                                userId = user.id;
-                                console.log(`✅ Using existing user ID: ${userId}`);
+                        if (authError) {
+                            console.log(`⚠️ Auth creation error/warning: ${authError.message}`);
+                            // If user already exists, we try to find them by email
+                            if (authError.message.includes('already registered') || authError.status === 422 || authError.code === 'email_exists') {
+                                // Important: We should search for the user by email using a more reliable method if possible
+                                // but for now, we'll stick to the listUsers approach or assume the email is the key
+                                const { data: usersData, error: listError } = await supabase.auth.admin.listUsers();
+                                if (!listError) {
+                                    const matchedUser = usersData.users.find(u => u.email?.toLowerCase() === application.email.toLowerCase());
+                                    if (matchedUser) {
+                                        userId = matchedUser.id;
+                                        console.log(`✅ Using existing user ID from Supabase list: ${userId}`);
+                                    }
+                                }
+                                
+                                if (!userId) {
+                                    throw new Error(`User with email ${application.email} exists but could not be located for mapping.`);
+                                }
                             } else {
-                                throw new Error(`User claimed to exist but not found in list for ${application.email}`);
+                                throw authError;
                             }
                         } else {
-                            throw authError;
+                            userId = authData.user.id;
+                            console.log(`✅ Created new user ID in Supabase: ${userId}`);
                         }
                     } else {
-                        userId = authData.user.id;
-                        console.log(`✅ Created new user ID: ${userId}`);
+                        console.log(`✅ Using pre-linked user ID from application: ${userId}`);
                     }
 
                     // Ensure user metadata has role: 'affiliate' even for existing users
@@ -549,6 +544,51 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         }
     });
 
+    // 17. Get all payouts (Admin)
+    router.get('/admin/payouts', authenticateAdmin, async (req, res) => {
+        try {
+            const result = await db.query(`
+                SELECT p.*, a.name as affiliate_name, a.email as affiliate_email 
+                FROM affiliate_payouts p 
+                JOIN affiliates a ON p.affiliate_id = a.id 
+                ORDER BY p.created_at DESC
+            `);
+            res.json({ success: true, payouts: result.rows });
+        } catch (err) {
+            console.error('Fetch payouts error:', err);
+            res.status(500).json({ error: 'Failed to fetch payouts' });
+        }
+    });
+
+    // 18. Record manual payout (Admin)
+    router.post('/admin/payouts', authenticateAdmin, async (req, res) => {
+        try {
+            const { affiliateId, amount, date } = req.body; // affiliateId can be ID or Email based on frontend usage
+            
+            // Find affiliate by email if ID is not uuid-like or is passed as email
+            let finalAffiliateId = affiliateId;
+            if (affiliateId.includes('@')) {
+                const affRes = await db.query('SELECT id FROM affiliates WHERE email = $1', [affiliateId]);
+                if (affRes.rows.length === 0) return res.status(404).json({ error: 'Affiliate not found with this email' });
+                finalAffiliateId = affRes.rows[0].id;
+            }
+
+            const result = await db.query(
+                `INSERT INTO affiliate_payouts (affiliate_id, amount, created_at) VALUES ($1, $2, $3) RETURNING *`,
+                [finalAffiliateId, amount, date || new Date()]
+            );
+
+            // Update affiliate balance (Subtract from total_earned if tracked that way, or just log)
+            // Assuming balance is calculated on the fly or needs a field update:
+            // await db.query('UPDATE affiliates SET balance = balance - $1 WHERE id = $2', [amount, finalAffiliateId]);
+
+            res.status(201).json({ success: true, payout: result.rows[0] });
+        } catch (err) {
+            console.error('Record payout error:', err);
+            res.status(500).json({ error: 'Failed to record payout' });
+        }
+    });
+
     // --- Affiliate Profile Management (Self-Service) ---
 
     /**
@@ -614,137 +654,6 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         } catch (err) {
             console.error('Update affiliate profile error:', err);
             res.status(500).json({ error: 'Failed to update profile' });
-        }
-    });
-
-    // --- WITHDRAWALS ---
-    
-    // 17. Request a Withdrawal (Affiliate)
-    router.post('/me/withdrawals', authenticateToken, async (req, res) => {
-        try {
-            const userId = req.user.id;
-            const { amount, paymentMethod, paymentDetails } = req.body;
-
-            if (!amount || isNaN(amount) || amount <= 0) {
-                return res.status(400).json({ error: 'Invalid withdrawal amount' });
-            }
-
-            // Get affiliate profile and check balance
-            const affRes = await db.query('SELECT id, available_balance FROM affiliates WHERE user_id = $1', [userId]);
-            if (affRes.rows.length === 0) return res.status(404).json({ error: 'Affiliate profile not found' });
-            
-            const affiliate = affRes.rows[0];
-            if (parseFloat(affiliate.available_balance) < parseFloat(amount)) {
-                return res.status(400).json({ error: 'Insufficient balance' });
-            }
-
-            // Transaction: Create withdrawal and subtract from balance
-            // Note: In production we'd use BEGIN/COMMIT for atomic safety
-            await db.query(`
-                UPDATE affiliates SET available_balance = available_balance - $1 WHERE id = $2
-            `, [amount, affiliate.id]);
-
-            const result = await db.query(
-                `INSERT INTO affiliate_withdrawals (affiliate_id, amount, payment_method, payment_details) 
-                 VALUES ($1, $2, $3, $4) RETURNING *`,
-                [affiliate.id, amount, paymentMethod || 'UPI', paymentDetails]
-            );
-
-            res.status(201).json({ success: true, withdrawal: result.rows[0] });
-        } catch (err) {
-            console.error('Withdrawal request error:', err);
-            res.status(500).json({ error: 'Failed to submit withdrawal request' });
-        }
-    });
-
-    // 18. Get My Withdrawals (Affiliate)
-    router.get('/me/withdrawals', authenticateToken, async (req, res) => {
-        try {
-            const userId = req.user.id;
-            const result = await db.query(`
-                SELECT w.* 
-                FROM affiliate_withdrawals w
-                JOIN affiliates a ON w.affiliate_id = a.id
-                WHERE a.user_id = $1
-                ORDER BY w.created_at DESC`,
-                [userId]
-            );
-            res.json({ success: true, withdrawals: result.rows });
-        } catch (err) {
-            res.status(500).json({ error: 'Failed to fetch withdrawals' });
-        }
-    });
-
-    // 19. Get All Withdrawals (Admin)
-    router.get('/admin/withdrawals', authenticateAdmin, async (req, res) => {
-        try {
-            const result = await db.query(`
-                SELECT 
-                    w.*, 
-                    COALESCE(a.name, 'Unknown Partner') as affiliate_name, 
-                    COALESCE(a.email, 'Deleted Partner') as affiliate_email
-                FROM affiliate_withdrawals w
-                LEFT JOIN affiliates a ON w.affiliate_id = a.id
-                ORDER BY w.created_at DESC
-            `);
-            res.json({ success: true, withdrawals: result.rows });
-        } catch (err) {
-            res.status(500).json({ error: 'Failed to fetch all withdrawals' });
-        }
-    });
-
-    // 20. Process/Update Withdrawal (Admin)
-    router.put('/admin/withdrawals/:id', authenticateAdmin, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { status, adminNotes } = req.body; // 'approved', 'paid', 'rejected'
-
-            // If rejected, we need to GIVE BACK the balance
-            if (status === 'rejected') {
-                const wRes = await db.query('SELECT affiliate_id, amount, status FROM affiliate_withdrawals WHERE id = $1', [id]);
-                if (wRes.rows.length === 0) return res.status(404).json({ error: 'Withdrawal not found' });
-                
-                const withdrawal = wRes.rows[0];
-                if (withdrawal.status !== 'rejected' && withdrawal.status !== 'paid') {
-                    // Refund to available_balance
-                    await db.query('UPDATE affiliates SET available_balance = available_balance + $1 WHERE id = $2', [withdrawal.amount, withdrawal.affiliate_id]);
-                }
-            }
-
-            const processedAt = (status === 'paid' || status === 'approved') ? 'NOW()' : 'NULL';
-            const result = await db.query(
-                `UPDATE affiliate_withdrawals SET status=$1, admin_notes=$2, processed_at=${processedAt} WHERE id=$3 RETURNING *`,
-                [status, adminNotes, id]
-            );
-
-            res.json({ success: true, withdrawal: result.rows[0] });
-        } catch (err) {
-            res.status(500).json({ error: 'Failed to update withdrawal status' });
-        }
-    });
-
-    // 21. Create Manual Withdrawal (Admin)
-    router.post('/admin/withdrawals/manual', authenticateAdmin, async (req, res) => {
-        try {
-            const { affiliate_id, amount, paymentMethod, paymentDetails, status } = req.body;
-
-            if (!affiliate_id || !amount || isNaN(amount) || amount <= 0) {
-                return res.status(400).json({ error: 'Affiliate ID and valid amount are required' });
-            }
-
-            // Transactional update: Deduct from balance and log withdrawal
-            await db.query('UPDATE affiliates SET available_balance = available_balance - $1 WHERE id = $2', [amount, affiliate_id]);
-
-            const result = await db.query(
-                `INSERT INTO affiliate_withdrawals (affiliate_id, amount, payment_method, payment_details, status, processed_at) 
-                 VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
-                [affiliate_id, amount, paymentMethod || 'Manual', paymentDetails, status || 'paid']
-            );
-
-            res.status(201).json({ success: true, withdrawal: result.rows[0] });
-        } catch (err) {
-            console.error('Manual withdrawal error:', err);
-            res.status(500).json({ error: 'Failed to record manual withdrawal' });
         }
     });
 

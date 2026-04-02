@@ -264,8 +264,7 @@ const runMigrations = async () => {
             ['is_affiliate_eligible', 'BOOLEAN DEFAULT TRUE'],
             ['affiliate_commission_rate', 'NUMERIC(5,2) DEFAULT NULL'],
             ['affiliate_payout_type', 'VARCHAR(50) DEFAULT \'percentage\''],
-            ['affiliate_fixed_amount', 'INTEGER DEFAULT NULL'],
-            ['min_affiliate_level', 'VARCHAR(100) DEFAULT \'Ambassador\'']
+            ['affiliate_fixed_amount', 'INTEGER DEFAULT NULL']
         ];
         for (const [col, type] of productAffCols) {
             await db.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ${col} ${type}`).catch(() => { });
@@ -285,7 +284,6 @@ const runMigrations = async () => {
         // Data Normalization: Level names
         await db.query(`
             UPDATE affiliates SET level = 'Kottravai Ambassador' WHERE level = 'Ambassador';
-            UPDATE products SET min_affiliate_level = 'Kottravai Ambassador' WHERE min_affiliate_level = 'Ambassador' OR min_affiliate_level IS NULL;
         `).catch(() => { });
 
         // Create missing tables
@@ -302,18 +300,6 @@ const runMigrations = async () => {
                 order_id VARCHAR(255),
                 error_message TEXT,
                 payload JSONB,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS alliance_applications (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                name VARCHAR(255) NOT NULL,
-                address TEXT NOT NULL,
-                phone VARCHAR(20) NOT NULL,
-                insta_id VARCHAR(255),
-                facebook_id VARCHAR(255),
-                twitter_id VARCHAR(255),
-                youtube_id VARCHAR(255),
-                status VARCHAR(50) DEFAULT 'Pending',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -333,6 +319,7 @@ const runMigrations = async () => {
                 reason TEXT,
                 status VARCHAR(50) DEFAULT 'pending',
                 reviewed_at TIMESTAMP WITH TIME ZONE,
+                user_id UUID,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -404,17 +391,6 @@ const runMigrations = async () => {
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_id UUID;
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
-            CREATE TABLE IF NOT EXISTS affiliate_withdrawals (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                affiliate_id UUID REFERENCES affiliates(id) ON DELETE CASCADE,
-                amount NUMERIC NOT NULL,
-                status VARCHAR(50) DEFAULT 'pending',
-                payment_method VARCHAR(100),
-                payment_details TEXT,
-                admin_notes TEXT,
-                processed_at TIMESTAMP WITH TIME ZONE,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
         `).catch(() => { });
 
         console.log('✅ Initial migrations completed');
@@ -823,8 +799,7 @@ app.post('/api/products', authenticateAdmin, async (req, res) => {
             name, price, category, image, slug, categorySlug,
             shortDescription, description, keyFeatures, features, images, isBestSeller,
             isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants,
-            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount,
-            min_affiliate_level
+            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount
         } = req.body;
 
         // Robust price parsing (removes commas if present)
@@ -857,8 +832,7 @@ app.post('/api/products', authenticateAdmin, async (req, res) => {
                 is_affiliate_eligible: is_affiliate_eligible !== undefined ? is_affiliate_eligible : true,
                 affiliate_commission_rate: affiliate_commission_rate || 0,
                 affiliate_payout_type: affiliate_payout_type || 'percentage',
-                affiliate_fixed_amount: affiliate_fixed_amount || 0,
-                min_affiliate_level: min_affiliate_level || 'Ambassador'
+                affiliate_fixed_amount: affiliate_fixed_amount || 0
             }])
             .select()
             .single();
@@ -884,8 +858,7 @@ app.put('/api/products/:id', authenticateAdmin, async (req, res) => {
             name, price, category, image, slug, categorySlug,
             shortDescription, description, keyFeatures, features, images, isBestSeller,
             isGiftBundleItem, isLive, isCustomRequest, customFormConfig, defaultFormFields, variants,
-            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount,
-            min_affiliate_level
+            is_affiliate_eligible, affiliate_commission_rate, affiliate_payout_type, affiliate_fixed_amount
         } = req.body;
 
         const cleanPrice = typeof price === 'string' ? parseFloat(price.replace(/,/g, '')) : Number(price);
@@ -914,8 +887,7 @@ app.put('/api/products/:id', authenticateAdmin, async (req, res) => {
                 is_affiliate_eligible: is_affiliate_eligible !== undefined ? is_affiliate_eligible : true,
                 affiliate_commission_rate: affiliate_commission_rate || 0,
                 affiliate_payout_type: affiliate_payout_type || 'percentage',
-                affiliate_fixed_amount: affiliate_fixed_amount || 0,
-                min_affiliate_level: min_affiliate_level || 'Ambassador'
+                affiliate_fixed_amount: affiliate_fixed_amount || 0
             })
             .eq('id', id)
             .select()
@@ -1845,80 +1817,6 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         }
     } catch (err) {
         res.status(500).json({ error: 'Verification failed' });
-    }
-});
-
-// --- Alliance Application Routes ---
-// Public endpoint for users to apply to become an alliance
-app.post('/api/alliance', async (req, res) => {
-    try {
-        const { name, address, phone, instaId, facebookId, linkedinId, twitterId, youtubeId } = req.body;
-
-        if (!name || !address || !phone) {
-            return res.status(400).json({ error: 'Name, address, and phone number are required.' });
-        }
-
-        const query = `
-            INSERT INTO alliance_applications (name, address, phone, insta_id, facebook_id, linkedin_id, twitter_id, youtube_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING *
-        `;
-        const values = [name, address, phone, instaId || null, facebookId || null, linkedinId || null, twitterId || null, youtubeId || null];
-        const result = await db.query(query, values);
-
-        res.status(201).json({
-            success: true,
-            message: 'Application submitted successfully!',
-            application: result.rows[0]
-        });
-    } catch (err) {
-        console.error('❌ Alliance App Submission Error:', err);
-        res.status(500).json({ error: 'Failed to submit application' });
-    }
-});
-
-// Admin endpoint to view all alliance applications (like an Excel sheet)
-app.get('/api/alliance', authenticateAdmin, async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM alliance_applications ORDER BY created_at DESC');
-        res.json(result.rows);
-    } catch (err) {
-        console.error('❌ Alliance App Fetch Error:', err);
-        res.status(500).json({ error: 'Failed to fetch alliance applications' });
-    }
-});
-
-// Admin endpoint to export alliance applications as CSV (Excel compatible)
-app.get('/api/alliance/export', authenticateAdmin, async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM alliance_applications ORDER BY created_at DESC');
-        const apps = result.rows;
-
-        // CSV Header
-        let csv = 'ID,Name,Phone,Instagram,Facebook,LinkedIn,Twitter,YouTube,Address,Date Applied\n';
-
-        apps.forEach(app => {
-            const row = [
-                app.id,
-                `"${app.name.replace(/"/g, '""')}"`,
-                `"${app.phone}"`,
-                `"${(app.insta_id || '').replace(/"/g, '""')}"`,
-                `"${(app.facebook_id || '').replace(/"/g, '""')}"`,
-                `"${(app.linkedin_id || '').replace(/"/g, '""')}"`,
-                `"${(app.twitter_id || '').replace(/"/g, '""')}"`,
-                `"${(app.youtube_id || '').replace(/"/g, '""')}"`,
-                `"${(app.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
-                new Date(app.created_at).toLocaleString()
-            ];
-            csv += row.join(',') + '\n';
-        });
-
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename=alliance_applications.csv');
-        res.status(200).send(csv);
-    } catch (err) {
-        console.error('❌ Alliance Export Error:', err);
-        res.status(500).send('Error generating export');
     }
 });
 

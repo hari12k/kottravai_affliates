@@ -67,7 +67,7 @@ interface DashboardStats {
 }
 
 const AffiliateDashboard = () => {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, openLoginModal } = useAuth();
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [copied, setCopied] = useState(false);
@@ -125,6 +125,33 @@ const AffiliateDashboard = () => {
         );
     }
 
+    if (!isAuthenticated) {
+        return (
+            <MainLayout>
+                <div className="min-h-screen bg-[#FAF9F6] py-32 flex items-center">
+                    <div className="container mx-auto px-4 max-w-lg text-center bg-white p-12 rounded-[3rem] shadow-xl border border-gray-100">
+                        <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-8">
+                            <Users size={40} className="text-[#8E2A8B]" />
+                        </div>
+                        <h1 className="text-3xl font-black text-[#2D1B4E] mb-4 uppercase tracking-tighter">Affiliate Access</h1>
+                        <p className="text-gray-500 mb-10 leading-relaxed font-medium">
+                            Please sign in with your Kottravai account to access your partner dashboard, track referrals, and view commissions.
+                        </p>
+                        <button 
+                            onClick={openLoginModal}
+                            className="w-full bg-[#2D1B4E] text-white px-10 py-5 rounded-2xl font-black uppercase tracking-[0.2em] hover:bg-[#8E2A8B] transition-all shadow-xl shadow-purple-200 flex items-center justify-center gap-3 active:scale-95"
+                        >
+                            Sign In to Dashboard <ArrowUpRight size={20} />
+                        </button>
+                        <p className="mt-8 text-xs font-bold text-gray-400 uppercase tracking-widest">
+                            New here? <button onClick={() => window.location.href='/alliance'} className="text-[#8E2A8B] hover:underline">Apply to Join</button>
+                        </p>
+                    </div>
+                </div>
+            </MainLayout>
+        );
+    }
+
     if (!stats) {
         return (
             <MainLayout>
@@ -132,7 +159,7 @@ const AffiliateDashboard = () => {
                     <div className="container mx-auto px-4 max-w-lg text-center">
                         <AlertCircle size={64} className="mx-auto text-amber-500 mb-6" />
                         <h1 className="text-3xl font-black text-[#2D1B4E] mb-4">Affiliate Profile Not Found</h1>
-                        <p className="text-gray-500 mb-10 leading-relaxed">
+                        <p className="text-gray-500 mb-10 leading-relaxed font-medium">
                             It looks like your account isn't registered for our affiliate program yet. 
                             Join the Kottravai Alliance to start earning commissions!
                         </p>

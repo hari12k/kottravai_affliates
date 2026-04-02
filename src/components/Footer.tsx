@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ChevronUp, HelpCircle, LayoutDashboard } from 'lucide-react';
+import { ChevronUp, HelpCircle, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 const Footer = () => {
@@ -96,10 +96,18 @@ const Footer = () => {
                 <div className="flex flex-wrap items-center gap-8">
                     <Link
                         to="/alliance"
-                        className="flex items-center gap-2 hover:text-[#2874f0] transition-colors"
+                        className="flex items-center gap-2 hover:text-[#2874f0] transition-all group"
                     >
-                        <LayoutDashboard size={16} className="text-[#FFD700]" />
+                        <LayoutDashboard size={16} className="text-[#FFD700] group-hover:scale-110 transition-transform" />
                         <span>Join our Alliance</span>
+                    </Link>
+
+                    <Link
+                        to="/affiliate/dashboard"
+                        className="flex items-center gap-2 hover:text-[#2874f0] transition-all group"
+                    >
+                        <ShieldCheck size={16} className="text-[#FFD700] group-hover:scale-110 transition-transform" />
+                        <span>Partner Portal</span>
                     </Link>
 
                     <Link to="/faqs" className="flex items-center gap-2 hover:text-[#2874f0] transition-colors">

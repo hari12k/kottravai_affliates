@@ -6,7 +6,7 @@ import { useReviews } from '@/context/ReviewContext';
 import { useOrders } from '../../context/OrderContext';
 import { usePartners } from '@/context/PartnerContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Image as ImageIcon, Trash2, X, Upload, Pencil, MessageSquareQuote, Package, ShoppingBag, ChevronDown, ChevronUp, LayoutDashboard, TrendingUp, DollarSign, Handshake, Video, Newspaper, Users, UserCheck, Phone, Instagram, Facebook, Twitter, Youtube, Linkedin, LogOut, Search, Bell, Activity, ArrowUpRight, ArrowDownRight, MoreVertical, Calendar, Clock, MessageCircle, FileText } from 'lucide-react';
+import { Plus, Image as ImageIcon, Trash2, X, Upload, Pencil, MessageSquareQuote, Package, ShoppingBag, ChevronDown, ChevronUp, LayoutDashboard, TrendingUp, DollarSign, Handshake, Video, Newspaper, Users, UserCheck, Phone, Instagram, Facebook, Twitter, Youtube, LogOut, Search, Bell, Activity, ArrowUpRight, ArrowDownRight, MoreVertical, Calendar, Clock, MessageCircle, FileText } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { categories } from '@/data/products';
 import toast from 'react-hot-toast';
@@ -25,7 +25,7 @@ const AdminDashboard = () => {
     const { partners, addPartner, updatePartner, deletePartner } = usePartners();
 
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean | null>(null);
-    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'alliance-apps' | 'affiliates' | 'affiliate-partners' | 'affiliate-dashboard' | 'affiliate-withdrawals'>('dashboard');
+    const [view, setView] = useState<'dashboard' | 'list' | 'add' | 'videos' | 'news' | 'reviews' | 'stocks' | 'orders' | 'partners' | 'users' | 'whatsapp-helper' | 'affiliates' | 'affiliate-partners' | 'affiliate-dashboard' | 'affiliate-payouts'>('dashboard');
 
     // Admin Session Guard
     useEffect(() => {
@@ -73,20 +73,6 @@ const AdminDashboard = () => {
     // Partner Form State
     const [partnerForm, setPartnerForm] = useState({ name: '', logo: '' });
     const [editingPartnerId, setEditingPartnerId] = useState<number | null>(null);
-
-    // Alliance Applications state
-    const [allianceApps, setAllianceApps] = useState<any[]>([]);
-
-    const fetchAllianceApps = async () => {
-        try {
-            const response = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/alliance`, {
-                headers: { 'x-admin-secret': sessionStorage.getItem('kottravai_admin_token') || 'admin123' }
-            });
-            setAllianceApps(response.data);
-        } catch (error) {
-            console.error('Failed to fetch alliance apps:', error);
-        }
-    };
 
     // Affiliate Applications state
     const [affiliateApplications, setAffiliateApplications] = useState<any[]>([]);
@@ -154,6 +140,37 @@ const AdminDashboard = () => {
 
     // Affiliate Sales state
     const [affiliateSales, setAffiliateSales] = useState<any[]>([]);
+    const [affiliatePayouts, setAffiliatePayouts] = useState<any[]>([]);
+
+    const fetchAffiliatePayouts = async () => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            const response = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/payouts`, {
+                headers: { 'X-Admin-Secret': adminSecret }
+            });
+            if (response.data.success) {
+                setAffiliatePayouts(response.data.payouts || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch affiliate payouts:', error);
+            toast.error('Failed to load payout logs');
+        }
+    };
+
+    const handleRecordPayout = async (affiliateId: string, amount: number) => {
+        try {
+            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
+            await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/payouts`, 
+                { affiliateId, amount, date: new Date().toISOString() },
+                { headers: { 'X-Admin-Secret': adminSecret } }
+            );
+            toast.success('Payout recorded successfully');
+            fetchAffiliatePayouts();
+            fetchAffiliates(); // Refresh balances
+        } catch (error) {
+            toast.error('Failed to record payout');
+        }
+    };
 
     const fetchAffiliateSales = async () => {
         try {
@@ -170,58 +187,7 @@ const AdminDashboard = () => {
         }
     };
 
-    // Affiliate Withdrawals state
-    const [withdrawals, setWithdrawals] = useState<any[]>([]);
-
-    const fetchWithdrawals = async () => {
-        try {
-            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
-            const response = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/withdrawals`, {
-                headers: { 'X-Admin-Secret': adminSecret }
-            });
-            
-            console.log('📡 [DEBUG] Withdrawal Logs Fetch:', {
-                status: response.status,
-                count: response.data?.withdrawals?.length || 0,
-                data: response.data
-            });
-
-            if (response.data.success) {
-                setWithdrawals(response.data.withdrawals || []);
-            }
-        } catch (error: any) {
-            console.error('🚨 [DEBUG] Failed to fetch withdrawals:', {
-                message: error.message,
-                status: error.response?.status,
-                data: error.response?.data
-            });
-            toast.error('Failed to load withdrawal data');
-        }
-    };
-
-    const updateWithdrawalStatus = async (id: string, status: string, notes: string = '') => {
-        try {
-            const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
-            const response = await axios.put(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/withdrawals/${id}`, {
-                status,
-                adminNotes: notes
-            }, {
-                headers: { 'X-Admin-Secret': adminSecret }
-            });
-
-            if (response.data.success) {
-                toast.success(`Withdrawal marked as ${status}`);
-                fetchWithdrawals();
-            }
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to update withdrawal');
-        }
-    };
-
     useEffect(() => {
-        if (view === 'alliance-apps') {
-            fetchAllianceApps();
-        }
         if (view === 'affiliates') {
             fetchAffiliateApplications();
         }
@@ -231,10 +197,8 @@ const AdminDashboard = () => {
         if (view === 'affiliate-dashboard') {
             fetchAffiliateSales();
         }
-        if (view === 'affiliate-withdrawals') {
-            console.log('🔄 Fetching withdrawals and dependencies...');
-            fetchWithdrawals();
-            fetchAffiliates(); // Need affiliates list for manual entry
+        if (view === 'affiliate-payouts') {
+            fetchAffiliatePayouts();
         }
     }, [view]);
 
@@ -564,8 +528,7 @@ const AdminDashboard = () => {
         is_affiliate_eligible: true,
         affiliate_commission_rate: '10',
         affiliate_payout_type: 'percentage' as 'percentage' | 'fixed',
-        affiliate_fixed_amount: '0',
-        min_affiliate_level: 'Kottravai Ambassador'
+        affiliate_fixed_amount: '0'
     });
 
     const [mainImage, setMainImage] = useState<string>('');
@@ -686,8 +649,7 @@ const AdminDashboard = () => {
             is_affiliate_eligible: product.is_affiliate_eligible !== undefined ? product.is_affiliate_eligible : true,
             affiliate_commission_rate: (product.affiliate_commission_rate || '10').toString(),
             affiliate_payout_type: product.affiliate_payout_type || 'percentage',
-            affiliate_fixed_amount: (product.affiliate_fixed_amount || '0').toString(),
-            min_affiliate_level: product.min_affiliate_level || 'Kottravai Ambassador'
+            affiliate_fixed_amount: (product.affiliate_fixed_amount || '0').toString()
         });
         setMainImage(product.image);
         setOtherImages(product.images || []);
@@ -756,8 +718,7 @@ const AdminDashboard = () => {
             is_affiliate_eligible: true,
             affiliate_commission_rate: '10',
             affiliate_payout_type: 'percentage',
-            affiliate_fixed_amount: '0',
-            min_affiliate_level: 'Kottravai Ambassador'
+            affiliate_fixed_amount: '0'
         });
         setMainImage('');
         setMainImageFile(null);
@@ -839,8 +800,7 @@ const AdminDashboard = () => {
                 is_affiliate_eligible: formData.is_affiliate_eligible,
                 affiliate_commission_rate: parseFloat(formData.affiliate_commission_rate) || 0,
                 affiliate_payout_type: formData.affiliate_payout_type,
-                affiliate_fixed_amount: parseInt(formData.affiliate_fixed_amount) || 0,
-                min_affiliate_level: formData.min_affiliate_level
+                affiliate_fixed_amount: parseInt(formData.affiliate_fixed_amount) || 0
             };
 
             if (editingId) {
@@ -1218,16 +1178,16 @@ const AdminDashboard = () => {
                                 {view === 'affiliate-partners' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
                             </button>
                             <button
-                                onClick={() => { setView('affiliate-withdrawals'); resetForm(); }}
-                                className={`w-full text-left px-5 py-3 rounded-2xl transition-all duration-300 font-bold flex items-center justify-between group ${view === 'affiliate-withdrawals' ? 'sidebar-item-active' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                onClick={() => { setView('affiliate-payouts'); resetForm(); }}
+                                className={`w-full text-left px-5 py-3 rounded-2xl transition-all duration-300 font-bold flex items-center justify-between group ${view === 'affiliate-payouts' ? 'sidebar-item-active' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
                             >
                                 <div className="flex items-center gap-4">
-                                    <div className={`p-2 rounded-xl transition-colors ${view === 'affiliate-withdrawals' ? 'bg-[#8E2A8B]/20' : 'bg-gray-800 group-hover:bg-gray-700'}`}>
-                                        <DollarSign size={18} className={view === 'affiliate-withdrawals' ? 'text-[#8E2A8B]' : ''}/>
+                                    <div className={`p-2 rounded-xl transition-colors ${view === 'affiliate-payouts' ? 'bg-[#8E2A8B]/20' : 'bg-gray-800 group-hover:bg-gray-700'}`}>
+                                        <DollarSign size={18} className={view === 'affiliate-payouts' ? 'text-[#8E2A8B]' : ''}/>
                                     </div>
-                                    <span className="text-sm">Withdrawal Logs</span>
+                                    <span className="text-sm">Payout Logs</span>
                                 </div>
-                                {view === 'affiliate-withdrawals' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
+                                {view === 'affiliate-payouts' && <div className="h-1.5 w-1.5 rounded-full bg-[#8E2A8B] shadow-[0_0_8px_#8E2A8B]"></div>}
                             </button>
                         </div>
                     </div>
@@ -1240,8 +1200,7 @@ const AdminDashboard = () => {
                                 { view: 'reviews', icon: MessageSquareQuote, label: 'Feedback' },
                                 { view: 'news', icon: Newspaper, label: 'Newsroom' },
                                 { view: 'videos', icon: Video, label: 'Media Hub' },
-                                { view: 'partners', icon: Handshake, label: 'Alliances' },
-                                { view: 'alliance-apps', icon: Search, label: 'Alliance Catalog' }
+                                { view: 'partners', icon: Handshake, label: 'Alliances' }
                             ].map((item, idx) => (
                                 <button
                                     key={idx}
@@ -1286,7 +1245,7 @@ const AdminDashboard = () => {
                 <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-100 px-10 py-5 flex justify-between items-center shadow-sm">
                     <div className="flex items-center gap-8 flex-1">
                         <h2 className="text-2xl font-black text-[#2D1B4E] whitespace-nowrap admin-gradient-text">
-                            {view === 'dashboard' ? 'Overview' : view === 'videos' ? 'Video Lab' : view === 'news' ? 'Press Hub' : view === 'reviews' ? 'Feedback Lab' : view === 'stocks' ? 'Inventory' : view === 'orders' ? 'Order Stream' : view === 'users' ? 'Monitoring' : view === 'partners' ? 'Alliances' : view === 'affiliates' ? 'Affiliate Program' : view === 'affiliate-partners' ? 'Affiliate Partners' : view === 'affiliate-dashboard' ? 'Affiliate Performance' : view === 'alliance-apps' ? 'Alliance Catalog' : view === 'add' ? (editingId ? 'Refine Product' : 'Construct Product') : (selectedCategory === 'all' ? 'Inventory Catalog' : categories.find(c => c.slug === selectedCategory)?.name || selectedCategory)}
+                            {view === 'dashboard' ? 'Overview' : view === 'videos' ? 'Video Lab' : view === 'news' ? 'Press Hub' : view === 'reviews' ? 'Feedback Lab' : view === 'stocks' ? 'Inventory' : view === 'orders' ? 'Order Stream' : view === 'users' ? 'Monitoring' : view === 'partners' ? 'Alliances' : view === 'affiliates' ? 'Affiliate Program' : view === 'affiliate-partners' ? 'Affiliate Partners' : view === 'affiliate-dashboard' ? 'Affiliate Performance' : view === 'add' ? (editingId ? 'Refine Product' : 'Construct Product') : (selectedCategory === 'all' ? 'Inventory Catalog' : categories.find(c => c.slug === selectedCategory)?.name || selectedCategory)}
                         </h2>
 
                         {/* Search Bar */}
@@ -2562,100 +2521,6 @@ const AdminDashboard = () => {
                                 </div>
                             </div>
                         </div>
-                    ) : view === 'alliance-apps' ? (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                                <h3 className="text-lg font-bold text-[#2D1B4E]">Alliance Applications</h3>
-                                <button
-                                    onClick={() => {
-                                        const token = sessionStorage.getItem('kottravai_admin_token');
-                                        window.open(`${import.meta.env.VITE_API_URL || '/api'}/alliance/export?token=${token || ''}`, '_blank');
-                                    }}
-                                    className="flex items-center gap-2 bg-[#1A1A1A] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#8E2A8B] transition-all shadow-lg hover:shadow-[#8E2A8B]/20"
-                                >
-                                    <ImageIcon size={16} className="text-[#FFD700]" />
-                                    Export to Excel (.csv)
-                                </button>
-                            </div>
-                            <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                                <table className="w-full text-left border-collapse">
-                                    <thead className="bg-gray-50 border-b border-gray-100">
-                                        <tr>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-500">Applicant</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-500">Contact</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-500">Address</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-500">Socials</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-gray-500">Date</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-50">
-                                        {allianceApps.map((app) => (
-                                            <tr key={app.id} className="hover:bg-gray-50/50 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-[#8E2A8B]/10 flex items-center justify-center text-[#8E2A8B] font-bold text-xs">
-                                                            {app.name.charAt(0)}
-                                                        </div>
-                                                        <span className="font-bold text-gray-900">{app.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
-                                                            <Phone size={12} className="text-[#8E2A8B]" />
-                                                            {app.phone}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 max-w-xs">
-                                                    <p className="text-xs text-gray-600 line-clamp-2">{app.address}</p>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        {app.insta_id && (
-                                                            <a href={`https://instagram.com/${app.insta_id.replace('@', '')}`} target="_blank" className="text-[#E4405F] hover:scale-110 transition-transform">
-                                                                <Instagram size={16} />
-                                                            </a>
-                                                        )}
-                                                        {app.facebook_id && (
-                                                            <a href={app.facebook_id} target="_blank" className="text-[#1877F2] hover:scale-110 transition-transform">
-                                                                <Facebook size={16} />
-                                                            </a>
-                                                        )}
-                                                        {app.linkedin_id && (
-                                                            <a href={app.linkedin_id.startsWith('http') ? app.linkedin_id : `https://linkedin.com/in/${app.linkedin_id.replace('@', '')}`} target="_blank" className="text-[#0A66C2] hover:scale-110 transition-transform">
-                                                                <Linkedin size={16} />
-                                                            </a>
-                                                        )}
-                                                        {app.twitter_id && (
-                                                            <a href={app.twitter_id.startsWith('http') ? app.twitter_id : `https://twitter.com/${app.twitter_id.replace('@', '')}`} target="_blank" className="text-[#1DA1F2] hover:scale-110 transition-transform">
-                                                                <Twitter size={16} />
-                                                            </a>
-                                                        )}
-                                                        {app.youtube_id && (
-                                                            <a href={app.youtube_id} target="_blank" className="text-[#FF0000] hover:scale-110 transition-transform">
-                                                                <Youtube size={16} />
-                                                            </a>
-                                                        )}
-                                                        {!app.insta_id && !app.facebook_id && !app.linkedin_id && !app.twitter_id && !app.youtube_id && <span className="text-gray-400 text-xs">None</span>}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-xs text-gray-500 font-medium">
-                                                    {new Date(app.created_at).toLocaleDateString()}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {allianceApps.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-sm">
-                                                    No applications received yet.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
                     ) : view === 'add' ? (
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-4xl mx-auto">
                             <h3 className="text-lg font-bold text-[#2D1B4E] mb-6">{editingId ? 'Edit Product' : 'Add New Product'}</h3>
@@ -2848,34 +2713,6 @@ const AdminDashboard = () => {
                                                                 ? ((parseFloat(formData.price || '0') * parseFloat(formData.affiliate_commission_rate || '0')) / 100).toFixed(2)
                                                                 : parseFloat(formData.affiliate_fixed_amount || '0').toFixed(2)
                                                             }
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {formData.is_affiliate_eligible && (
-                                            <div className="pt-4 border-t border-purple-100/50">
-                                                <div className="space-y-4">
-                                                    <div className="flex flex-col md:flex-row md:items-center gap-4">
-                                                        <div className="flex-1 space-y-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Minimum Achievement Level Required</label>
-                                                                <div className="flex items-center gap-2 text-purple-400 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
-                                                                    <Activity size={10} />
-                                                                    <span className="text-[9px] font-black uppercase tracking-tighter">Visibility Control</span>
-                                                                </div>
-                                                            </div>
-                                                            <p className="text-[10px] text-gray-400 italic font-medium">Only affiliates at this level or higher will see this product in their portal.</p>
-                                                            <select
-                                                                value={formData.min_affiliate_level}
-                                                                onChange={e => setFormData({ ...formData, min_affiliate_level: e.target.value })}
-                                                                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-[#8E2A8B] focus:border-[#8E2A8B] outline-none transition-all bg-white font-bold text-sm shadow-sm hover:border-[#8E2A8B] cursor-pointer"
-                                                            >
-                                                                <option value="Kottravai Ambassador">Kottravai Ambassador</option>
-                                                                <option value="Kottravai Seller">Kottravai Seller</option>
-                                                                <option value="Kottravai Pro Partner">Kottravai Pro Partner</option>
-                                                            </select>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -3638,190 +3475,100 @@ const AdminDashboard = () => {
                                 ))}
                             </div>
                         </div>
-                    ) : view === 'affiliate-withdrawals' ? (
+                    ) : view === 'affiliate-payouts' ? (
                         <div className="space-y-6 animate-in fade-in duration-500">
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Left Side: Record Manual Payout */}
-                                <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-                                    <h4 className="text-sm font-black text-[#2D1B4E] uppercase tracking-widest flex items-center gap-2">
-                                        <Plus size={16} className="text-[#8E2A8B]" />
-                                        Manual Payout Entry
-                                    </h4>
-                                    <form 
-                                        onSubmit={async (e) => {
-                                            e.preventDefault();
-                                            const form = e.target as HTMLFormElement;
-                                            const data = new FormData(form);
-                                            const payload = {
-                                                affiliate_id: data.get('affiliate_id'),
-                                                amount: data.get('amount'),
-                                                paymentMethod: data.get('method'),
-                                                paymentDetails: data.get('details'),
-                                                status: 'paid' // Manual entries are usually already paid
-                                            };
-                                            
-                                            try {
-                                                const adminSecret = sessionStorage.getItem('kottravai_admin_token') || 'admin123';
-                                                const res = await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/affiliates/admin/withdrawals/manual`, payload, {
-                                                    headers: { 'X-Admin-Secret': adminSecret }
-                                                });
-                                                if (res.data.success) {
-                                                    toast.success('Manual payout logged successfully');
-                                                    form.reset();
-                                                    fetchWithdrawals();
-                                                }
-                                            } catch (err: any) {
-                                                toast.error(err.response?.data?.error || 'Failed to record payout');
-                                            }
-                                        }}
-                                        className="space-y-3"
-                                    >
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Select Partner</label>
-                                            <select name="affiliate_id" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-[#8E2A8B]/10 transition-all">
-                                                <option value="">-- Choose Affiliate --</option>
-                                                {activeAffiliates.map(a => (
-                                                    <option key={a.id} value={a.id}>{a.name} ({a.email})</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Amount (₹)</label>
-                                            <input name="amount" type="number" step="1" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none" placeholder="0.00" />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Method</label>
-                                                <select name="method" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none">
-                                                    <option value="UPI">UPI</option>
-                                                    <option value="Bank Transfer">Bank Transfer</option>
-                                                    <option value="Cash">Cash</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Reference</label>
-                                                <input name="details" required className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold outline-none" placeholder="UTR / UPI ID" />
-                                            </div>
-                                        </div>
-                                        <button className="w-full bg-[#2D1B4E] text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-[#8E2A8B] transition-all shadow-md">
-                                            Log Transaction
-                                        </button>
-                                    </form>
+                            <div className="flex flex-col md:flex-row md:items-center justify-between bg-white p-8 rounded-2xl border border-gray-100 shadow-sm gap-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-[#8E2A8B] shadow-inner">
+                                        <DollarSign size={28} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-2xl font-black text-[#2D1B4E]">Financial Disbursements</h3>
+                                        <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Affiliate Commission Payout Logs</p>
+                                    </div>
                                 </div>
-
-                                {/* Right Side: Header Info */}
-                                <div className="lg:col-span-2 bg-gradient-to-br from-[#8E2A8B] to-[#2D1B4E] p-8 rounded-2xl shadow-xl flex flex-col justify-center text-white relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 p-10 opacity-10">
-                                        <DollarSign size={120} />
+                                <div className="flex items-center gap-3">
+                                    <div className="text-right hidden sm:block">
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Total Distributed</p>
+                                        <p className="text-xl font-black text-[#8E2A8B]">₹{affiliatePayouts.reduce((acc, curr) => acc + Number(curr.amount || 0), 0).toLocaleString()}</p>
                                     </div>
-                                    <h2 className="text-3xl font-black mb-2">Financial Nexus</h2>
-                                    <p className="text-white/70 max-w-md">Real-time monitoring of affiliate payouts. Log manual transactions or approve pending requests from ambassadors.</p>
-                                    <div className="flex gap-4 mt-6">
-                                        <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10">
-                                            <p className="text-[10px] font-bold uppercase text-white/50">Total Logs</p>
-                                            <p className="text-xl font-black">{withdrawals.length}</p>
-                                        </div>
-                                        <button 
-                                            onClick={fetchWithdrawals}
-                                            className="px-4 py-2 bg-white text-[#2D1B4E] rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-100 transition-all flex items-center gap-2"
-                                        >
-                                            <Activity size={16} />
-                                            Sync Data
-                                        </button>
-                                    </div>
+                                    <div className="w-[1px] h-10 bg-gray-100 mx-2 hidden sm:block"></div>
+                                    <button 
+                                        onClick={() => {
+                                            const email = window.prompt("Enter Affiliate Email:");
+                                            if(!email) return;
+                                            const amount = window.prompt("Enter Payout Amount (₹):");
+                                            if(!amount || isNaN(parseFloat(amount))) return;
+                                            handleRecordPayout(email, parseFloat(amount));
+                                        }}
+                                        className="bg-[#2D1B4E] text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] hover:bg-black transition-all shadow-xl shadow-purple-100 flex items-center gap-3 group"
+                                    >
+                                        <Plus size={18} className="group-hover:rotate-90 transition-transform" />
+                                        Disburse Payout
+                                    </button>
                                 </div>
                             </div>
 
-                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                                <div className="p-6 border-b border-gray-50">
+                                    <div className="flex items-center gap-2 text-[#8E2A8B]">
+                                        <Clock size={16} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Transaction History</span>
+                                    </div>
+                                </div>
                                 <table className="w-full text-left">
-                                    <thead className="bg-[#f8f9fc] border-b border-gray-100">
+                                    <thead className="bg-gray-50 text-gray-400">
                                         <tr>
-                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Partner</th>
-                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Amount</th>
-                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Strategy/Method</th>
-                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Status</th>
-                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest">Processed</th>
-                                            <th className="px-6 py-4 font-bold text-[10px] text-gray-400 uppercase tracking-widest text-right">Operations</th>
+                                            <th className="px-8 py-5 font-black text-[10px] uppercase tracking-[0.2em]">Time Stamp</th>
+                                            <th className="px-8 py-5 font-black text-[10px] uppercase tracking-[0.2em]">Beneficiary</th>
+                                            <th className="px-8 py-5 font-black text-[10px] uppercase tracking-[0.2em]">Payout Amount</th>
+                                            <th className="px-8 py-5 font-black text-[10px] uppercase tracking-[0.2em] text-right">Verification</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {withdrawals.map((w: any) => (
-                                            <tr key={w.id} className="hover:bg-gray-50/50 transition-colors group">
-                                                <td className="px-6 py-5">
-                                                    <div className="font-bold text-gray-800">{w.affiliate_name}</div>
-                                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">{w.affiliate_email}</div>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    <span className="text-lg font-black text-[#8E2A8B]">₹{parseFloat(w.amount).toLocaleString()}</span>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="px-2 py-1 bg-gray-100 rounded text-[10px] font-black text-gray-600 uppercase tracking-widest">{w.payment_method}</span>
-                                                    </div>
-                                                    <div className="text-[11px] text-gray-500 mt-1.5 font-medium max-w-xs truncate" title={w.payment_details}>
-                                                        {w.payment_details}
+                                    <tbody className="divide-y divide-gray-50">
+                                        {affiliatePayouts.length > 0 ? affiliatePayouts.sort((a,b) => new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()).map((payout, i) => (
+                                            <tr key={i} className="hover:bg-gray-50/50 transition-colors group">
+                                                <td className="px-8 py-6">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold text-gray-800">{new Date(payout.created_at || payout.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                                                        <span className="text-[10px] text-gray-400 font-bold">{new Date(payout.created_at || payout.date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-5">
-                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                                        w.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
-                                                        w.status === 'approved' ? 'bg-blue-100 text-blue-700' :
-                                                        w.status === 'rejected' ? 'bg-rose-100 text-rose-700' :
-                                                        'bg-amber-100 text-amber-700 animate-pulse'
-                                                    }`}>
-                                                        {w.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    <div className="flex items-center gap-2 text-gray-400">
-                                                        <Clock size={12} />
-                                                        <span className="text-[11px] font-bold">
-                                                            {w.processed_at ? new Date(w.processed_at).toLocaleDateString() : 'Awaiting Flow'}
-                                                        </span>
+                                                <td className="px-8 py-6">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center border border-gray-200">
+                                                            <Users size={16} className="text-gray-400" />
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-black text-[#2D1B4E] text-sm uppercase tracking-tight">{payout.affiliate_name || payout.email || 'Ambassador'}</span>
+                                                            <span className="text-[10px] text-[#8E2A8B] font-bold">{payout.affiliate_email || payout.email}</span>
+                                                        </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-5 text-right">
-                                                    <div className="flex justify-end items-center gap-2">
-                                                        {w.status === 'pending' && (
-                                                            <>
-                                                                <button 
-                                                                    onClick={() => updateWithdrawalStatus(w.id, 'approved')}
-                                                                    className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all"
-                                                                >
-                                                                    Approve
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        const notes = window.prompt('Specify reason for rejection:');
-                                                                        if (notes !== null) updateWithdrawalStatus(w.id, 'rejected', notes);
-                                                                    }}
-                                                                    className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all"
-                                                                >
-                                                                    Kill Flow
-                                                                </button>
-                                                            </>
-                                                        )}
-                                                        {w.status === 'approved' && (
-                                                            <button 
-                                                                onClick={() => updateWithdrawalStatus(w.id, 'paid')}
-                                                                className="px-6 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 shadow-sm transition-all"
-                                                            >
-                                                                Finalize Payout
-                                                            </button>
-                                                        )}
-                                                        {(w.status === 'paid' || w.status === 'rejected') && (
-                                                            <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Archived</span>
-                                                        )}
+                                                <td className="px-8 py-6">
+                                                    <div className="flex items-baseline gap-1">
+                                                        <span className="text-xs font-bold text-gray-400">₹</span>
+                                                        <span className="text-xl font-black text-gray-900">{parseFloat(payout.amount).toLocaleString()}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-6 text-right">
+                                                    <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl border border-emerald-100">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                                        <span className="text-[10px] font-black uppercase tracking-widest">Disbursed</span>
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))}
-                                        {withdrawals.length === 0 && (
+                                        )) : (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-20 text-center">
-                                                    <div className="flex flex-col items-center gap-2 grayscale opacity-50">
-                                                        <DollarSign size={40} className="text-gray-300" />
-                                                        <p className="text-sm font-bold text-gray-400">No withdrawal requests found in logs.</p>
+                                                <td colSpan={4} className="px-8 py-32 text-center">
+                                                    <div className="flex flex-col items-center gap-4 opacity-30">
+                                                        <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
+                                                            <FileText size={32} className="text-gray-400" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-black uppercase tracking-[0.2em] text-sm text-gray-400">No Disbursals Logged</p>
+                                                            <p className="text-xs font-bold text-gray-300 mt-2">All payout transactions will materialize here</p>
+                                                        </div>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -3902,15 +3649,14 @@ const AdminDashboard = () => {
                                     <tr>
                                         <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Product</th>
                                         <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Category</th>
-                                        <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Level</th>
-                                        <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Price</th>
+                                        <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider text-right">Price</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {filteredProducts.map(product => (
                                         <tr key={product.id} className="hover:bg-gray-50 transition-all border-b border-gray-100 group">
                                             {quickEditId === product.id ? (
-                                                <td colSpan={4} className="p-0 animate-in slide-in-from-top-2 duration-300">
+                                                <td colSpan={3} className="p-0 animate-in slide-in-from-top-2 duration-300">
                                                     <div className="bg-blue-50/50 p-6 space-y-4 border-2 border-blue-200 rounded-xl m-2 shadow-sm">
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
                                                             <div className="space-y-1">
@@ -4012,27 +3758,14 @@ const AdminDashboard = () => {
                                                             {product.category}
                                                         </span>
                                                     </td>
-                                                    <td className="px-6 py-4">
-                                                        <span 
-                                                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                                                                product.min_affiliate_level === 'Kottravai Pro Partner' 
-                                                                ? 'bg-purple-100 text-purple-700 border-purple-200' 
-                                                                : product.min_affiliate_level === 'Kottravai Seller'
-                                                                ? 'bg-blue-100 text-blue-700 border-blue-200'
-                                                                : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                                            }`}
-                                                        >
-                                                            {product.min_affiliate_level || 'Kottravai Ambassador'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 font-bold text-[#8E2A8B]">₹{product.price}</td>
+                                                    <td className="px-6 py-4 font-bold text-[#8E2A8B] text-right">₹{product.price}</td>
                                                 </>
                                             )}
                                         </tr>
                                     ))}
                                     {filteredProducts.length === 0 && (
                                         <tr>
-                                            <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                                            <td colSpan={3} className="px-6 py-12 text-center text-gray-400">
                                                 No products found.
                                             </td>
                                         </tr>
