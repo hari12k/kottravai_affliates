@@ -387,17 +387,27 @@ const runMigrations = async () => {
                 status VARCHAR(50) DEFAULT 'pending',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
-
-            -- Ensure columns exist for existing tables
-            ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_id UUID;
-            ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
-            ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
-
-            -- Affiliate Profile Migrations
-            ALTER TABLE affiliate_applications ADD COLUMN IF NOT EXISTS user_id UUID;
-            ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS user_id UUID;
-            ALTER TABLE affiliates ADD CONSTRAINT affiliates_user_id_key UNIQUE (user_id);
         `).catch(() => { });
+
+        // Individual columns to ensure schema integrity
+        const schemaPatch = [
+            'ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_id UUID',
+            'ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_name VARCHAR(255)',
+            'ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1',
+            'ALTER TABLE affiliate_applications ADD COLUMN IF NOT EXISTS user_id UUID',
+            'ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS user_id UUID',
+            'ALTER TABLE affiliates ADD CONSTRAINT affiliates_user_id_key UNIQUE (user_id)'
+        ];
+
+        for (const sql of schemaPatch) {
+            await db.query(sql).catch(err => {
+                if (err.message.includes('already exists')) {
+                    // This is fine and expected
+                } else {
+                    console.warn(`⚠️ Schema migration informational: ${err.message}`);
+                }
+            });
+        }
 
         console.log('✅ Initial migrations completed');
     } catch (err) {
