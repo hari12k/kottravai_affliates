@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         fetchSession();
 
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
                 const u = session.user;
                 setUser({
