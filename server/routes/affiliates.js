@@ -317,6 +317,7 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                 const referralCode = `${application.name.split(' ')[0].toUpperCase().replace(/[^A-Z0-9]/g, '')}${Math.floor(1000 + Math.random() * 9000)}`;
 
                 let userId = application.user_id;
+                let userIdWasFoundInSupabase = false;
                 
                 try {
                     console.log(`🚀 Starting onboarding for ${application.email}`);
@@ -338,6 +339,7 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                                 const { data: foundUser, error: findError } = await supabase.auth.admin.getUserByEmail(application.email);
                                 if (!findError && foundUser?.user) {
                                     userId = foundUser.user.id;
+                                    userIdWasFoundInSupabase = true;
                                     console.log(`✅ Using existing user ID from Supabase lookup: ${userId}`);
                                 } else {
                                     // Fallback: search the list if lookup failed
@@ -346,6 +348,7 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                                         const matchedUser = usersData.users.find(u => u.email?.toLowerCase() === application.email.toLowerCase());
                                         if (matchedUser) {
                                             userId = matchedUser.id;
+                                            userIdWasFoundInSupabase = true;
                                             console.log(`✅ Using existing user ID from Supabase list fallback: ${userId}`);
                                         }
                                     }
@@ -386,13 +389,15 @@ module.exports = (authenticateToken, authenticateAdmin) => {
 
                     // Send Welcome Email
                     console.log(`📧 Sending welcome email to ${application.email}`);
+                    const isNewUser = !application.user_id && !userIdWasFoundInSupabase; // We need to track this logic
+
                     await sendEmail({
                         to: application.email,
                         subject: 'Welcome to Kottravai Affiliate Program!',
                         html: getAffiliateWelcomeTemplate({
                             name: application.name,
                             email: application.email,
-                            password: tempPassword,
+                            password: (application.user_id || userIdWasFoundInSupabase) ? 'Use your existing Kottravai password' : tempPassword,
                             referral_code: referralCode
                         })
                     });
