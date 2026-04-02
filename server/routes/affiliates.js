@@ -13,21 +13,31 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         try {
             const { name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, user_id } = req.body;
             
-            // Check if already applied
-            const exists = await db.query('SELECT id FROM affiliate_applications WHERE email = $1 AND status != \'rejected\'', [email]);
-            if (exists.rows.length > 0) {
-                return res.status(400).json({ error: 'An application with this email already exists or is under review' });
+            // Validate UUID for user_id (if provided as empty string, set to null)
+            const finalUserId = (user_id && user_id.trim() !== '') ? user_id : null;
+
+            // Check if already an affiliate
+            const isAffiliate = await db.query('SELECT id FROM affiliates WHERE email = $1 OR user_id = $2', [email, finalUserId]);
+            if (isAffiliate.rows.length > 0) {
+                return res.status(400).json({ error: 'You are already an active partner' });
             }
 
+            // Check if already applied and pending
+            const exists = await db.query('SELECT id FROM affiliate_applications WHERE email = $1 AND status = \'pending\'', [email]);
+            if (exists.rows.length > 0) {
+                return res.status(400).json({ error: 'Your application is already under review' });
+            }
+
+            // If an application was rejected, we allow a new one
             const result = await db.query(
                 `INSERT INTO affiliate_applications (name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, user_id) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-                [name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, user_id]
+                [name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, finalUserId]
             );
             res.status(201).json({ success: true, application: result.rows[0] });
         } catch (err) {
             console.error('Affiliate apply error:', err);
-            res.status(500).json({ error: 'Failed to submit application' });
+            res.status(500).json({ error: 'Failed to submit application', details: err.message });
         }
     });
 
@@ -324,14 +334,20 @@ module.exports = (authenticateToken, authenticateAdmin) => {
                             console.log(`⚠️ Auth creation error/warning: ${authError.message}`);
                             // If user already exists, we try to find them by email
                             if (authError.message.includes('already registered') || authError.status === 422 || authError.code === 'email_exists') {
-                                // Important: We should search for the user by email using a more reliable method if possible
-                                // but for now, we'll stick to the listUsers approach or assume the email is the key
-                                const { data: usersData, error: listError } = await supabase.auth.admin.listUsers();
-                                if (!listError) {
-                                    const matchedUser = usersData.users.find(u => u.email?.toLowerCase() === application.email.toLowerCase());
-                                    if (matchedUser) {
-                                        userId = matchedUser.id;
-                                        console.log(`✅ Using existing user ID from Supabase list: ${userId}`);
+                                // Important: Find the user by email using the dedicated helper
+                                const { data: foundUser, error: findError } = await supabase.auth.admin.getUserByEmail(application.email);
+                                if (!findError && foundUser?.user) {
+                                    userId = foundUser.user.id;
+                                    console.log(`✅ Using existing user ID from Supabase lookup: ${userId}`);
+                                } else {
+                                    // Fallback: search the list if lookup failed
+                                    const { data: usersData, error: listError } = await supabase.auth.admin.listUsers();
+                                    if (!listError) {
+                                        const matchedUser = usersData.users.find(u => u.email?.toLowerCase() === application.email.toLowerCase());
+                                        if (matchedUser) {
+                                            userId = matchedUser.id;
+                                            console.log(`✅ Using existing user ID from Supabase list fallback: ${userId}`);
+                                        }
                                     }
                                 }
                                 
