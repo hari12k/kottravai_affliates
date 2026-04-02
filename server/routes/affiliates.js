@@ -13,8 +13,8 @@ module.exports = (authenticateToken, authenticateAdmin) => {
         try {
             const { name, email, phone, city, instagram_link, facebook_link, twitter_link, youtube_link, selling_experience, products_promoted, reason, user_id } = req.body;
             
-            // Validate UUID for user_id (if provided as empty string, set to null)
-            const finalUserId = (user_id && user_id.trim() !== '') ? user_id : null;
+            // Validate UUID for user_id (if provided as empty string or non-string, set to null)
+            const finalUserId = (typeof user_id === 'string' && user_id.trim() !== '') ? user_id : null;
 
             // Check if already an affiliate
             const isAffiliate = await db.query('SELECT id FROM affiliates WHERE email = $1 OR user_id = $2', [email, finalUserId]);

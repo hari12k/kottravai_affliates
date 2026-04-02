@@ -86,7 +86,8 @@ app.use(cors({
             'http://localhost:5175',
             'http://localhost:3000',
             'http://127.0.0.1:3000',
-            'http://127.0.0.1:5175'
+            'http://127.0.0.1:5175',
+            'https://kottravai-affliates.vercel.app'
         ];
         // Allow Vercel previews and localhost
         if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
@@ -391,6 +392,11 @@ const runMigrations = async () => {
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_id UUID;
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
             ALTER TABLE affiliate_sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+
+            -- Affiliate Profile Migrations
+            ALTER TABLE affiliate_applications ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE affiliates ADD CONSTRAINT affiliates_user_id_key UNIQUE (user_id);
         `).catch(() => { });
 
         console.log('✅ Initial migrations completed');
