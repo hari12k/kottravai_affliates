@@ -52,13 +52,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     mobile: u.user_metadata?.mobile || '',
                     role: u.user_metadata?.role || 'user'
                 });
+                if (session.access_token) {
+                    sessionStorage.setItem('kottravai_token', session.access_token);
+                }
+            } else {
+                sessionStorage.removeItem('kottravai_token');
             }
             setIsLoading(false);
         };
 
         fetchSession();
 
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (session?.user) {
                 const u = session.user;
                 setUser({
@@ -70,9 +75,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     role: u.user_metadata?.role || 'user'
                 });
                 analytics.setUserId(u.id);
+
+                if (session.access_token) {
+                    sessionStorage.setItem('kottravai_token', session.access_token);
+                }
             } else {
                 setUser(null);
                 analytics.setUserId(null);
+                sessionStorage.removeItem('kottravai_token');
             }
             setIsLoading(false);
         });
